@@ -12,6 +12,8 @@ Deno.serve(async (req) => {
     const lingua = ["pt", "en", "fr"].includes(b.lingua) ? b.lingua : "pt";
     const tipo = b.tipo === "renovacao" ? "renovacao" : "obtencao";
     const formando = lingua === "pt" && !!b.formando;
+    const codigo = String(b.codigo ?? "").trim().toUpperCase().slice(0, 20);
+    if (formando && !/^I31-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(codigo)) return json(req, { erro: "Escreva o seu código de formando (ex.: I31-ABCD-1234)." }, 400);
     if (nome.length < 3 || !/^9\d{8}$/.test(tel) || b.rgpd !== true) return json(req, { erro: "Dados em falta." }, 400);
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(req, { erro: "Email inválido." }, 400);
     const dias = await agenda(sb);
@@ -24,9 +26,16 @@ Deno.serve(async (req) => {
     const orderId = "PSI" + Date.now().toString(36).toUpperCase();
     const { data: m, error } = await sb.from("marcacoes_psi").insert({
       data: b.data, hora: b.hora, tipo, lingua, formando, nome, telemovel: tel, email: email || null, valor,
-      order_id: orderId, consent_marketing: !!b.marketing, consent_rgpd_em: new Date().toISOString(),
+      order_id: orderId, codigo: formando ? codigo : null, consent_marketing: !!b.marketing, consent_rgpd_em: new Date().toISOString(),
     }).select("id").single();
     if (error) return json(req, { erro: "Essa hora acabou de ficar ocupada. Escolha outra." }, 409);
+    if (formando) {
+      const { data: ok } = await sb.rpc("reservar_codigo_formando", { p_codigo: codigo, p_marcacao: m.id });
+      if (!ok) {
+        await sb.from("marcacoes_psi").update({ estado: "cancelado", obs: "código de formando inválido ou já usado" }).eq("id", m.id);
+        return json(req, { erro: "Esse código de formando não é válido ou já foi usado. Pode marcar sem o desconto (35 €)." }, 400);
+      }
+    }
     const r = await fetch(MBWAY_URL, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mbWayKey: Deno.env.get("IFTHENPAY_MBWAY_KEY"), orderId, amount: valor.toFixed(2), mobileNumber: "351#" + tel, email: email, description: `Psicotecnico ${b.data} ${b.hora}`.slice(0, 100) }),
