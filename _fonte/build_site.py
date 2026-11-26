@@ -81,6 +81,10 @@ def page(name):
     body = re.sub(r'<span>Multibanco</span><span>Visa · Mastercard</span>', '', body)
     body = body.replace('MB WAY, Multibanco ou cartão', 'Pagamento MB WAY na hora').replace('Lembrete por SMS na véspera', 'Confirmação por email').replace('Escolha a turma e garanta a vaga.', 'Deixe o contacto e ligamos-lhe com as datas.')
     body = re.sub(r'<a href="#">(Facebook|Instagram)</a>', '', body)
+    # DGERT: certificação concedida a 26/11/2026 (processo C6171)
+    body = body.replace('Formação, saúde e consultoria rodoviária em Guimarães desde 2019.', 'Formação, saúde e consultoria rodoviária em Guimarães desde 2019. Entidade formadora certificada pela DGERT.')
+    body = body.replace('>Reconhecido pelo IMT</a>', '>Reconhecido pelo IMT</a><span>Certificado pela DGERT</span>')
+    body = body.replace('Formação, conformidade legal, psicotécnicos e gestão da empresa, com uma equipa que conhece o setor rodoviário.</p>', 'Formação, conformidade legal, psicotécnicos e gestão da empresa, com uma equipa que conhece o setor rodoviário. Entidade formadora certificada pela DGERT: a formação conta para as horas obrigatórias dos seus trabalhadores.</p>')
 
     if name == "Main":
         body = re.sub(r'<section id="marcar".*?</sc-if>\s*</section>', MARCAR.format(lang='pt'), body, flags=re.S)
