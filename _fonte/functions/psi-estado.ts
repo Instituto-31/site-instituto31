@@ -1,4 +1,6 @@
-import { cors, db, enviarEmail, esc, json, moldura } from "./_shared.ts";
+import { cors, db, enviarEmail, esc, json, moldura, slotUtc } from "./_shared.ts";
+import { convite } from "./_gcal.ts";
+const AGENDA = "coordenacao@instituto31.pt";
 const STATUS_URL = "https://api.ifthenpay.com/spg/payment/mbway/status";
 const L: Record<string, string> = { pt: "Português", en: "English", fr: "Français" };
 function dataPt(d: string) { const [y, m, dd] = d.split("-"); return `${dd}/${m}/${y}`; }
@@ -38,9 +40,21 @@ Deno.serve(async (req) => {
       `Nova marcação paga: psicotécnico ${quando}`,
       moldura("Nova marcação paga pelo site",
         `<p><b>${esc(m.nome)}</b> · ${esc(m.telemovel)} · ${esc(m.email ?? "sem email")}</p>
-<p>${esc(quando)} · ${esc(tipo)} · ${esc(L[m.lingua])}${m.formando ? " · <b>diz ser formando (25 €) – confirmar</b>" : ""}</p>
+<p>${esc(quando)} · ${esc(tipo)} · ${esc(L[m.lingua])}${m.formando ? " · formando, código " + esc(m.codigo ?? "") : ""}</p>
 <p>Pago ${m.valor} € por MB WAY (pedido ${esc(m.order_id)}).</p>
 <p><b>Falta emitir a fatura no TOConline.</b></p>`), "psi_aviso_equipa");
+  }
+  if (novo === "pago" && rows && rows.length) {
+    const ini = slotUtc(m.data, String(m.hora).slice(0, 5));
+    const dur = m.tipo === "renovacao" ? 50 : 90;
+    const ics = convite({ uid: m.id, inicioUtc: ini, fimUtc: ini + dur * 60000, para: AGENDA,
+      titulo: `Psicotécnico (site) – ${m.nome}`,
+      descricao: `${m.nome}\nTel: ${m.telemovel}\nEmail: ${m.email ?? "-"}\n${m.tipo === "renovacao" ? "Renovação" : "Obtenção"} · ${L[m.lingua]}${m.formando ? " · formando (código " + (m.codigo ?? "") + ")" : ""}\nPago ${m.valor} € MB WAY (${m.order_id})\nFalta fatura TOConline.`,
+      local: "Instituto 31, Rua Dr. João Afonso de Almeida 315, Guimarães" });
+    const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(ics)));
+    await enviarEmail(sb, [{ email: AGENDA, name: "Agenda Instituto 31" }], `Agenda: psicotécnico ${dataPt(m.data)} ${String(m.hora).slice(0, 5)} – ${m.nome}`,
+      moldura("Marcação para a agenda", `<p>${esc(m.nome)} · ${esc(m.telemovel)}</p><p>${esc(dataPt(m.data))} às ${esc(String(m.hora).slice(0, 5))}</p><p>O convite em anexo adiciona a marcação à agenda.</p>`),
+      "psi_convite_agenda", {}, [{ name: "convite.ics", content: b64 }]);
   }
   return json(req, { estado: novo });
 });

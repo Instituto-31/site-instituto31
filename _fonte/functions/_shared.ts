@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { localToUtc, ocupadosGoogle } from "./_gcal.ts";
 
 export const ORIGENS = ["https://instituto31.pt", "https://www.instituto31.pt"];
 export function cors(req: Request) {
@@ -29,6 +30,8 @@ export function diaSemana(iso: string) { const w = new Date(iso + "T12:00:00Z").
 
 export const DIAS_AGENDA = 21;
 export const MIN_ANTECEDENCIA_MIN = 60;
+export const SLOT_MIN = 75;
+export function slotUtc(data: string, hora: string) { const [y, m, d] = data.split("-").map(Number); const [h, mi] = hora.split(":").map(Number); return localToUtc(y, m, d, h, mi); }
 
 // Agenda: horas configuradas e livres por dia
 export async function agenda(sb: ReturnType<typeof db>) {
@@ -42,6 +45,7 @@ export async function agenda(sb: ReturnType<typeof db>) {
     sb.from("marcacoes_psi").select("data,hora").in("estado", ["pendente", "pago"]).gte("data", hoje.data).lte("data", fim),
   ]);
   const feriados = new Set((fer ?? []).map((f) => f.data));
+  const google = await ocupadosGoogle(slotUtc(hoje.data, "00:00"), slotUtc(addDias(fim, 1), "00:00"));
   const dias: { data: string; horas: string[]; livres: string[] }[] = [];
   for (let i = 0; i <= DIAS_AGENDA; i++) {
     const d = addDias(hoje.data, i);
@@ -50,6 +54,8 @@ export async function agenda(sb: ReturnType<typeof db>) {
     const livres = horas.filter((h) => {
       if ((bl ?? []).some((b) => b.data === d && (!b.hora || String(b.hora).slice(0, 5) === h))) return false;
       if ((ms ?? []).some((m) => m.data === d && String(m.hora).slice(0, 5) === h)) return false;
+      const s0 = slotUtc(d, h), s1 = s0 + SLOT_MIN * 60000;
+      if (google.some((g) => g.start < s1 && g.end > s0)) return false;
       if (d === hoje.data) {
         const [hh, mm] = h.split(":").map(Number), [nh, nm] = hoje.hora.split(":").map(Number);
         if (hh * 60 + mm - (nh * 60 + nm) < MIN_ANTECEDENCIA_MIN) return false;
@@ -63,14 +69,14 @@ export async function agenda(sb: ReturnType<typeof db>) {
 
 export function preco(lingua: string, formando: boolean) { return lingua !== "pt" ? 70 : formando ? 25 : 35; }
 
-export async function enviarEmail(sb: ReturnType<typeof db>, para: { email: string; name?: string }[], assunto: string, html: string, tipo: string, extra: Record<string, unknown> = {}) {
+export async function enviarEmail(sb: ReturnType<typeof db>, para: { email: string; name?: string }[], assunto: string, html: string, tipo: string, extra: Record<string, unknown> = {}, anexos: { name: string; content: string }[] = []) {
   const key = Deno.env.get("BREVO_API_KEY");
   let estado = "erro", messageId: string | null = null;
   try {
     const r = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: { "api-key": key!, "Content-Type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ sender: { name: "Instituto 31", email: "geral@instituto31.pt" }, replyTo: { email: "geral@instituto31.pt", name: "Instituto 31" }, to: para, subject: assunto, htmlContent: html }),
+      body: JSON.stringify({ sender: { name: "Instituto 31", email: "geral@instituto31.pt" }, replyTo: { email: "geral@instituto31.pt", name: "Instituto 31" }, to: para, subject: assunto, htmlContent: html, ...(anexos.length ? { attachment: anexos } : {}) }),
     });
     const j = await r.json().catch(() => ({}));
     estado = r.ok ? "enviado" : "erro";
