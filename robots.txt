@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://instituto31.pt/sitemap.xml
