@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { convite, criarEventoGoogle, localToUtc, ocupadosGoogle } from "./_gcal.ts";
 import { emailConfirmacao, emailEquipa, moldura as molduraNova } from "./_email.ts";
+import { emitirFatura } from "./_fatura.ts";
 
 export const ORIGENS = ["https://instituto31.pt", "https://www.instituto31.pt"];
 export function cors(req: Request) {
@@ -144,6 +145,8 @@ export async function verificarPagamento(sb: ReturnType<typeof db>, m: any): Pro
         molduraNova("Marcação para a agenda", `<p>${esc(m.nome)} · ${esc(m.telemovel)}</p><p>${esc(dataPt(m.data))} às ${esc(String(m.hora).slice(0, 5))}</p><p>Abra o convite em anexo para a juntar à agenda.</p>`),
         "psi_convite_agenda", {}, [{ name: "convite.ics", content: b64 }]);
     }
+    // fatura-recibo no TOConline (só se FATURACAO estiver ligada; nunca bloqueia a marcação)
+    try { await emitirFatura(sb, { ...m, estado: "pago" }); } catch (_) { /* registado em fatura_erro */ }
   }
   return novo;
 }

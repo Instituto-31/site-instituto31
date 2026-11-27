@@ -1,4 +1,5 @@
 import { agenda, cors, db, json, preco } from "./_shared.ts";
+import { nifValido } from "./_fatura.ts";
 const MBWAY_URL = "https://api.ifthenpay.com/spg/payment/mbway";
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
@@ -16,6 +17,8 @@ Deno.serve(async (req) => {
     if (formando && !/^I31-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(codigo)) return json(req, { erro: "Escreva o seu código de formando (ex.: I31-ABCD-1234)." }, 400);
     if (nome.length < 3 || !/^9\d{8}$/.test(tel) || b.rgpd !== true) return json(req, { erro: "Dados em falta." }, 400);
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(req, { erro: "Email inválido." }, 400);
+    const nif = String(b.nif ?? "").replace(/\D/g, "").slice(0, 9);
+    if (nif && !nifValido(nif)) return json(req, { erro: lingua === "fr" ? "NIF invalide." : lingua === "en" ? "Invalid tax number (NIF)." : "NIF inválido. Confirme os 9 dígitos ou deixe em branco." }, 400);
     const dias = await agenda(sb);
     const dia = dias.find((d) => d.data === b.data);
     if (!dia || !dia.livres.includes(b.hora)) return json(req, { erro: "Essa hora acabou de ficar ocupada. Escolha outra." }, 409);
@@ -25,7 +28,7 @@ Deno.serve(async (req) => {
     const valor = preco(lingua, formando);
     const orderId = "PSI" + Date.now().toString(36).toUpperCase();
     const { data: m, error } = await sb.from("marcacoes_psi").insert({
-      data: b.data, hora: b.hora, tipo, lingua, formando, nome, telemovel: tel, email: email || null, valor,
+      data: b.data, hora: b.hora, tipo, lingua, formando, nome, telemovel: tel, email: email || null, nif: nif || null, valor,
       order_id: orderId, codigo: formando ? codigo : null, consent_marketing: !!b.marketing, consent_rgpd_em: new Date().toISOString(),
     }).select("id").single();
     if (error) return json(req, { erro: "Essa hora acabou de ficar ocupada. Escolha outra." }, 409);

@@ -90,6 +90,7 @@ ${linha("Avaliação", m.tipo === "renovacao" ? "Renovação" : "Obtenção")}
 ${linha("Língua", LNG[m.lingua] ?? "Português")}
 ${linha("Telemóvel", `<a href="tel:+351${e(m.telemovel)}" style="color:${TINTA}">${e(m.telemovel)}</a>`)}
 ${linha("Email", m.email ? `<a href="mailto:${e(m.email)}" style="color:${TINTA}">${e(m.email)}</a>` : "—")}
+${linha("NIF", m.nif ? e(m.nif) : "— (consumidor final)")}
 ${linha("Pago (MB WAY)", `${Number(m.valor).toFixed(2).replace(".", ",")} €`)}
 ${m.formando ? linha("Código de formando", e(m.codigo ?? "")) : ""}
 ${linha("Referência", e(m.order_id ?? ""))}
