@@ -84,6 +84,8 @@ def aplicar(name, fname, html):
     html = html.replace('<a href="/#formacao">Todos os cursos</a>', '<a href="/#cursos">Todos os cursos</a>')
     html = re.sub(r'(<nav aria-label="Informação")', NAV_TESTES + r'\n\1', html, count=1)
     html = html.replace('<a href="Multas.html">Contestação de multas</a>', '<a href="Psicotecnico-Braga.html">Psicotécnico perto de Braga</a><a href="Multas.html">Contestação de multas</a>', 1)
+    # secção de perguntas frequentes sem perguntas (respostas por escrever no design): retirar
+    html = re.sub(r'<section aria-labelledby="faq">\s*<h2 id="faq"[^>]*>Perguntas frequentes</h2>\s*<div[^>]*>\s*</div>\s*</section>', '', html)
     if name in TESTE_CURSO and ESTRADA in html:
         u, n = TESTE_CURSO[name]
         html = html.replace(ESTRADA, bloco_testes(u, n) + "\n" + ESTRADA, 1)
