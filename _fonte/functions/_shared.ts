@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { convite, criarEventoGoogle, localToUtc, ocupadosGoogle } from "./_gcal.ts";
+import { emailConfirmacao, emailEquipa, moldura as molduraNova } from "./_email.ts";
 
 export const ORIGENS = ["https://instituto31.pt", "https://www.instituto31.pt"];
 export function cors(req: Request) {
@@ -128,28 +129,8 @@ export async function verificarPagamento(sb: ReturnType<typeof db>, m: any): Pro
   if (novo === "pago") upd.pago_em = new Date().toISOString();
   const { data: rows } = await sb.from("marcacoes_psi").update(upd).eq("id", id).eq("estado", "pendente").select("id");
   if (novo === "pago" && rows && rows.length) {
-    const quando = `${dataPt(m.data)} às ${String(m.hora).slice(0, 5)}`;
-    const tipo = m.tipo === "renovacao" ? "Renovação (cerca de 50 min)" : "Obtenção (cerca de 1h30)";
-    if (m.email) {
-      const en = m.lingua !== "pt";
-      await enviarEmail(sb, [{ email: m.email, name: m.nome }],
-        en ? `Booking confirmed – ${quando}` : `Psicotécnico marcado – ${quando}`,
-        moldura(en ? "Your booking is confirmed" : "Está marcado!",
-          `<p style="font-size:18px;font-weight:700;margin:0 0 12px">${esc(quando)}</p>
-<p>${en ? "Assessment" : "Avaliação psicológica"}: ${esc(tipo)} · ${esc(L[m.lingua])}<br>${en ? "Paid" : "Pago"}: ${m.valor} € (MB WAY)</p>
-<p>${en ? "Please bring your ID card or passport, driving licence and glasses, if you use them. Arrive 10 minutes early." : "Traga o cartão de cidadão, a carta de condução e os óculos, se usar. Chegue 10 minutos antes."}</p>
-<p>${en ? "Need to change? WhatsApp +351 916 31 31 31 (free up to 24 h before)." : "Precisa de alterar? Ligue ou envie WhatsApp para 916 31 31 31 (grátis até 24 h antes)."}</p>
-<p>Rua Dr. João Afonso de Almeida 315, Guimarães · <a href="https://maps.google.com/?q=Instituto+31+Guimarães">Mapa</a></p>`), "psi_confirmacao");
-    }
-    await enviarEmail(sb, [{ email: "geral@instituto31.pt", name: "Instituto 31" }],
-      `Nova marcação paga: psicotécnico ${quando}`,
-      moldura("Nova marcação paga pelo site",
-        `<p><b>${esc(m.nome)}</b> · ${esc(m.telemovel)} · ${esc(m.email ?? "sem email")}</p>
-<p>${esc(quando)} · ${esc(tipo)} · ${esc(L[m.lingua])}${m.formando ? " · formando, código " + esc(m.codigo ?? "") : ""}</p>
-<p>Pago ${m.valor} € por MB WAY (pedido ${esc(m.order_id)}).</p>
-<p><b>Falta emitir a fatura no TOConline.</b></p>`), "psi_aviso_equipa");
-  }
-  if (novo === "pago" && rows && rows.length) {
+    if (m.email) { const c = emailConfirmacao(m); await enviarEmail(sb, [{ email: m.email, name: m.nome }], c.assunto, c.html, "psi_confirmacao"); }
+    { const q = emailEquipa(m); await enviarEmail(sb, [{ email: "geral@instituto31.pt", name: "Instituto 31" }], q.assunto, q.html, "psi_aviso_equipa"); }
     const ini = slotUtc(m.data, String(m.hora).slice(0, 5));
     const dur = SLOT_MIN;
     const titulo = `Psicotécnico (site) – ${m.nome}`;
@@ -160,7 +141,7 @@ export async function verificarPagamento(sb: ReturnType<typeof db>, m: any): Pro
       const ics = convite({ uid: m.id, inicioUtc: ini, fimUtc: ini + dur * 60000, para: AGENDA, titulo, descricao, local });
       const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(ics)));
       await enviarEmail(sb, [{ email: AGENDA, name: "Agenda Instituto 31" }], `Agenda: psicotécnico ${dataPt(m.data)} ${String(m.hora).slice(0, 5)} – ${m.nome}`,
-        moldura("Marcação para a agenda", `<p>${esc(m.nome)} · ${esc(m.telemovel)}</p><p>${esc(dataPt(m.data))} às ${esc(String(m.hora).slice(0, 5))}</p><p>Abra o convite em anexo para a juntar à agenda.</p>`),
+        molduraNova("Marcação para a agenda", `<p>${esc(m.nome)} · ${esc(m.telemovel)}</p><p>${esc(dataPt(m.data))} às ${esc(String(m.hora).slice(0, 5))}</p><p>Abra o convite em anexo para a juntar à agenda.</p>`),
         "psi_convite_agenda", {}, [{ name: "convite.ics", content: b64 }]);
     }
   }
