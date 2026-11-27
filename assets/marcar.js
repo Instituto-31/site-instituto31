@@ -61,7 +61,7 @@
       h += '</div>';
       if (S.agenda && S.dia >= 0) {
         var d = S.agenda[S.dia];
-        h += '<div><p style="margin:0 0 8px;font-weight:700;font-size:15px">' + L.hora + '</p><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">';
+        h += '<div><p style="margin:0 0 8px;font-weight:700;font-size:15px">' + L.hora + '</p><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">';
         d.horas.forEach(function (hr) { var off = d.livres.indexOf(hr) < 0; h += '<button type="button" data-hora="' + hr + '"' + (off ? ' disabled' : '') + ' aria-pressed="' + (S.hora === hr) + '" style="' + chip(S.hora === hr, off) + '">' + hr + '</button>'; });
         h += '</div></div>';
       }

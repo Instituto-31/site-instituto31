@@ -30,7 +30,7 @@ export function diaSemana(iso: string) { const w = new Date(iso + "T12:00:00Z").
 
 export const DIAS_AGENDA = 21;
 export const MIN_ANTECEDENCIA_MIN = 60;
-export const SLOT_MIN = 75;
+export const SLOT_MIN = 60;
 export function slotUtc(data: string, hora: string) { const [y, m, d] = data.split("-").map(Number); const [h, mi] = hora.split(":").map(Number); return localToUtc(y, m, d, h, mi); }
 
 // Agenda: horas configuradas e livres por dia
@@ -151,7 +151,7 @@ export async function verificarPagamento(sb: ReturnType<typeof db>, m: any): Pro
   }
   if (novo === "pago" && rows && rows.length) {
     const ini = slotUtc(m.data, String(m.hora).slice(0, 5));
-    const dur = m.tipo === "renovacao" ? 50 : 90;
+    const dur = SLOT_MIN;
     const titulo = `Psicotécnico (site) – ${m.nome}`;
     const descricao = `${m.nome}\nTel: ${m.telemovel}\nEmail: ${m.email ?? "-"}\n${m.tipo === "renovacao" ? "Renovação" : "Obtenção"} · ${L[m.lingua]}${m.formando ? " · formando (código " + (m.codigo ?? "") + ")" : ""}\nPago ${m.valor} € MB WAY (${m.order_id})\nFalta fatura TOConline.`;
     const local = "Instituto 31, Rua Dr. João Afonso de Almeida 315, Guimarães";
