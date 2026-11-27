@@ -84,7 +84,7 @@ def page(name):
     # DGERT: certificação concedida a 26/11/2026 (processo C6171)
     body = body.replace('Formação, saúde e consultoria rodoviária em Guimarães desde 2019.', 'Formação, saúde e consultoria rodoviária em Guimarães desde 2019. Entidade formadora certificada pela DGERT.')
     body = body.replace('>Reconhecido pelo IMT</a>', '>Reconhecido pelo IMT</a><span>Certificado pela DGERT</span>')
-    body = body.replace('Formação, conformidade legal, psicotécnicos e gestão da empresa, com uma equipa que conhece o setor rodoviário.</p>', 'Formação, conformidade legal, psicotécnicos e gestão da empresa, com uma equipa que conhece o setor rodoviário. Entidade formadora certificada pela DGERT: a formação conta para as horas obrigatórias dos seus trabalhadores.</p>')
+    body = body.replace('Formação, conformidade legal, psicotécnicos e gestão da empresa, com uma equipa que conhece o setor rodoviário.</p>', 'Formação, conformidade legal, psicotécnicos e gestão da empresa, com uma equipa que conhece o setor rodoviário. Entidade formadora certificada pela DGERT (áreas 729 Saúde, 840 Serviços de transporte, 861 Proteção de pessoas e bens e 862 Segurança e higiene no trabalho): a formação conta para as horas obrigatórias dos seus trabalhadores.</p>')
 
     if name == "Main":
         body = re.sub(r'<section id="marcar".*?</sc-if>\s*</section>', MARCAR.format(lang='pt'), body, flags=re.S)

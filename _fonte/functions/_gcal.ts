@@ -117,6 +117,16 @@ export function expandir(evs: Ev[], from: number, to: number) {
 }
 
 export async function ocupadosGoogle(from: number, to: number) {
+  const su = Deno.env.get("GCAL_SCRIPT_URL"), tk = Deno.env.get("GCAL_SCRIPT_TOKEN");
+  if (su && tk) {
+    try {
+      const r = await fetch(`${su}?token=${encodeURIComponent(tk)}&from=${from}&to=${to}`, { signal: AbortSignal.timeout(8000), redirect: "follow" });
+      const j = await r.json();
+      if (Array.isArray(j)) return j.map((x: { s: number; e: number }) => ({ start: x.s, end: x.e }));
+      console.error("gcal script", j);
+    } catch (e) { console.error("gcal script", e); }
+    return [];
+  }
   const url = Deno.env.get("GCAL_ICS_URL");
   if (!url) return [];
   try {
@@ -138,4 +148,14 @@ export function convite(opts: { uid: string; inicioUtc: number; fimUtc: number; 
     `ATTENDEE;CN=Agenda;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=FALSE:mailto:${opts.para}`,
     "STATUS:CONFIRMED", "TRANSP:OPAQUE", "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
+}
+
+export async function criarEventoGoogle(ev: { id: string; titulo: string; descricao: string; inicio: number; fim: number; local: string }) {
+  const su = Deno.env.get("GCAL_SCRIPT_URL"), tk = Deno.env.get("GCAL_SCRIPT_TOKEN");
+  if (!su || !tk) return false;
+  try {
+    const r = await fetch(`${su}?token=${encodeURIComponent(tk)}`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(ev), redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const j = await r.json().catch(() => ({}));
+    return !!j.ok;
+  } catch (e) { console.error("gcal criar", e); return false; }
 }
