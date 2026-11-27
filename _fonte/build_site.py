@@ -165,7 +165,9 @@ def page(name):
     desc = DESC.get(name.split('-')[0], DESC["Main"])
     scripts = ''
     if 'id="marcar"' in body:
-        scripts += '<script src="assets/marcar.js" defer></script>'
+        import hashlib
+        v = hashlib.md5(open('/home/claude/site/src/marcar.js','rb').read()).hexdigest()[:8]
+        scripts += f'<script src="assets/marcar.js?v={v}" defer></script>'
     if 'class="pedido"' in body:
         scripts += FORM_JS
     html = f"""<!doctype html>
@@ -180,7 +182,7 @@ def page(name):
 <meta property="og:description" content="{desc}">
 <meta property="og:image" content="https://instituto31.pt/assets/rececao.jpg">
 {helmet}
-<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/site.css?v=2">
 </head>
 <body>
 {body}
