@@ -43,7 +43,7 @@ function cabecalho(m: SB) {
     customer_country: "PT",
     vat_included_prices: true,
     tax_exemption_reason_id: TOC.MOTIVO_M07,
-    payment_mechanism: "MB",
+    payment_mechanism: "TR", // o TOConline não tem código MB WAY; MB WAY é uma transferência imediata (nota indica "MB WAY")
     notes: `Pago por MB WAY no site (${m.order_id}).`,
     external_reference: String(m.order_id),
   };

@@ -135,7 +135,7 @@ export async function verificarPagamento(sb: ReturnType<typeof db>, m: any): Pro
     const ini = slotUtc(m.data, String(m.hora).slice(0, 5));
     const dur = SLOT_MIN;
     const titulo = `Psicotécnico (site) – ${m.nome}`;
-    const descricao = `${m.nome}\nTel: ${m.telemovel}\nEmail: ${m.email ?? "-"}\n${m.tipo === "renovacao" ? "Renovação" : "Obtenção"} · ${L[m.lingua]}${m.formando ? " · formando (código " + (m.codigo ?? "") + ")" : ""}\nPago ${m.valor} € MB WAY (${m.order_id})\nFalta fatura TOConline.`;
+    const descricao = `${m.nome}\nTel: ${m.telemovel}\nEmail: ${m.email ?? "-"}\n${m.tipo === "renovacao" ? "Renovação" : "Obtenção"} · ${L[m.lingua]}${m.formando ? " · formando (código " + (m.codigo ?? "") + ")" : ""}\nPago ${m.valor} € MB WAY (${m.order_id})\nFatura: rascunho na série WEB do TOConline.`;
     const local = "Instituto 31, Rua Dr. João Afonso de Almeida 315, Guimarães";
     const criado = await criarEventoGoogle({ id: m.id, titulo, descricao, inicio: ini, fim: ini + dur * 60000, local });
     if (!criado) {

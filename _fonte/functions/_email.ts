@@ -95,6 +95,6 @@ ${linha("Pago (MB WAY)", `${Number(m.valor).toFixed(2).replace(".", ",")} €`)}
 ${m.formando ? linha("Código de formando", e(m.codigo ?? "")) : ""}
 ${linha("Referência", e(m.order_id ?? ""))}
 </table>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;background:#FFF6E0;border-radius:12px"><tr><td style="padding:14px 16px;font-size:14px;line-height:20px;color:#6B4E00"><b>A fazer:</b> emitir a fatura no TOConline. A marcação já está na agenda "Psicotécnicos".</td></tr></table>`;
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;background:#FFF6E0;border-radius:12px"><tr><td style="padding:14px 16px;font-size:14px;line-height:20px;color:#6B4E00"><b>A fazer:</b> rever e finalizar a fatura-recibo em rascunho no TOConline (Vendas → Faturas, série WEB). A marcação já está na agenda "Psicotécnicos".</td></tr></table>`;
   return { assunto: `Nova marcação paga · ${e(m.nome)} · ${quando} ${hora}`, html: moldura("Nova marcação paga", corpo, `${m.nome} · ${quando} ${hora}`) };
 }
