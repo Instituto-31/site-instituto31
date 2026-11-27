@@ -1,4 +1,5 @@
 """Converte as pranchas .dc.html em páginas estáticas para publicar em instituto31.pt."""
+import seo_extra
 import re, shutil, os, json
 
 SRC = "/home/claude/i31/project"
@@ -191,7 +192,10 @@ def page(name):
 </html>
 """
     fname = "index.html" if name == "Main" else f"{name}.html"
+    html = seo_extra.aplicar(name, fname, html)
     open(f"{OUT}/{fname}", "w", encoding="utf-8").write(html)
+    if name == "Psicotecnicos":
+        open(f"{OUT}/Psicotecnico-Braga.html", "w", encoding="utf-8").write(seo_extra.pagina_braga(html))
     return fname, leftover, ph
 
 
@@ -226,7 +230,9 @@ ExpiresByType image/svg+xml "access plus 30 days"
 </IfModule>
 """)
     open(f"{OUT}/robots.txt", "w").write("User-agent: *\nAllow: /\nSitemap: https://instituto31.pt/sitemap.xml\n")
-    urls = "".join(f"<url><loc>https://instituto31.pt/{'' if f == 'index.html' else f}</loc></url>" for f, _, _ in report)
+    paginas = [f for f, _, _ in report] + ["Psicotecnico-Braga.html"]
+    paginas += ["testes-de-tvde/", "testes-de-taxi/", "testes/", "testes-adr/", "testes-conselheiro-de-seguranca/"]  # ainda no WordPress
+    urls = "".join(f"<url><loc>https://instituto31.pt/{'' if f == 'index.html' else f}</loc></url>" for f in paginas)
     open(f"{OUT}/sitemap.xml", "w").write(f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>')
     print("ok", len(report), "páginas")
 
