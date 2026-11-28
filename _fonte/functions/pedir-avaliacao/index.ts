@@ -1,5 +1,5 @@
 // Pedido de avaliação no Google: corre todos os dias (pg_cron) e escreve a quem
-// teve consulta ontem. Cada pessoa só recebe este pedido uma vez.
+// teve consulta ontem ou concluiu uma formação nos últimos 7 dias. Cada pessoa só recebe este pedido uma vez.
 // ?simular=1 mostra quem receberia, sem enviar.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { emailAvaliacao } from "./_modelo.ts";
@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, chaveServico(), { auth: { persistSession: false } });
   const simular = new URL(req.url).searchParams.get("simular") === "1";
   const ontem = ontemLisboa();
-  type C = { email: string; nome: string; pessoa_id: string | null };
+  type C = { email: string; nome: string; pessoa_id: string | null; formacao?: string | null };
   const cand: C[] = [];
   // marcações do site dadas como realizadas
   const { data: ms } = await sb.from("marcacoes_psi").select("nome,email,pessoa_id").eq("data", ontem).eq("estado", "realizado");
@@ -24,6 +24,13 @@ Deno.serve(async (req) => {
   const { data: cs } = await sb.from("consultas_psi").select("pessoa_id,pessoas(nome,email)").eq("data", ontem);
   // deno-lint-ignore no-explicit-any
   for (const c of (cs ?? []) as any[]) if (c.pessoas && /@/.test(c.pessoas.email ?? "")) cand.push({ email: c.pessoas.email, nome: c.pessoas.nome, pessoa_id: c.pessoa_id });
+
+  // formações concluídas (registadas na Gestão com a data real) nos últimos 7 dias
+  const NOME_F: Record<string, string> = { cam: "CAM", tvde: "TVDE", adr: "ADR", tcc: "de Transporte Coletivo de Crianças", cmt: "de Motorista de Táxi" };
+  const semana = new Date(Date.parse(ontem + "T12:00:00Z") - 6 * 86400000).toISOString().slice(0, 10);
+  const { data: fs } = await sb.from("certificados").select("pessoa_id,tipo,pessoas(nome,email)").eq("origem", "gestao").gte("concluido_em", semana).lte("concluido_em", ontem);
+  // deno-lint-ignore no-explicit-any
+  for (const c of (fs ?? []) as any[]) if (c.pessoas && /@/.test(c.pessoas.email ?? "")) cand.push({ email: c.pessoas.email, nome: c.pessoas.nome, pessoa_id: c.pessoa_id, formacao: NOME_F[c.tipo] ?? c.tipo });
 
   // um pedido por email, e nunca a quem já recebeu ou pediu para não receber
   const vistos = new Set<string>();
@@ -40,7 +47,7 @@ Deno.serve(async (req) => {
   let enviados = 0, erros = 0;
   for (const c of enviar) {
     const tok = c.pessoa_id ? P.get(c.pessoa_id)?.token_saida : null;
-    const m = emailAvaliacao(c.nome, tok ? `${Deno.env.get("SUPABASE_URL")}/functions/v1/lembretes-sair?t=${tok}` : null);
+    const m = emailAvaliacao(c.nome, tok ? `${Deno.env.get("SUPABASE_URL")}/functions/v1/lembretes-sair?t=${tok}` : null, c.formacao ?? null);
     let ok = false, messageId: string | null = null;
     try {
       const r = await fetch("https://api.brevo.com/v3/smtp/email", {
