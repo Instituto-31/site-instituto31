@@ -9,7 +9,16 @@ const pagina = (titulo: string, txt: string) => new Response(`<!doctype html><ht
 <p style="margin-top:22px"><a href="https://instituto31.pt" style="color:#0670C2">instituto31.pt</a></p></div></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 
 Deno.serve(async (req) => {
-  const t = new URL(req.url).searchParams.get("t") ?? "";
+  const u = new URL(req.url);
+  const te = u.searchParams.get("e") ?? "";
+  if (te) {
+    if (!/^[0-9a-f-]{36}$/.test(te)) return pagina("Link inválido", "Este link não é válido. Se não quiser receber mais propostas, responda ao nosso email a pedir.");
+    const sbE = createClient(Deno.env.get("SUPABASE_URL")!, chaveServico(), { auth: { persistSession: false } });
+    const { data: de } = await sbE.from("empresas").update({ opt_out: true, estado: "sair" }).eq("token", te).select("id");
+    if (!de || !de.length) return pagina("Link inválido", "Não encontrámos o registo. Se não quiser receber mais propostas, responda ao nosso email a pedir.");
+    return pagina("Feito", "A sua empresa não vai receber mais propostas do Instituto 31. Obrigado.");
+  }
+  const t = u.searchParams.get("t") ?? "";
   if (!/^[0-9a-f-]{36}$/.test(t)) return pagina("Link inválido", "Este link não é válido. Se quiser deixar de receber avisos, responda a qualquer email nosso a pedir.");
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, chaveServico(), { auth: { persistSession: false } });
   const { data } = await sb.from("pessoas").update({ opt_out: true, opt_out_data: new Date().toISOString() }).eq("token_saida", t).select("id");
