@@ -8,9 +8,9 @@ const LOTE = 40;
 Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, chaveServico(), { auth: { persistSession: false } });
   const simular = new URL(req.url).searchParams.get("simular") === "1";
-  const { data: es } = await sb.from("empresas").select("id,nome,email,token,trabalhadores")
+  const { data: es } = await sb.from("empresas").select("id,nome,email,token,trabalhadores,grupo,distrito")
     .eq("aprovado", true).eq("estado", "por_enviar").eq("opt_out", false).not("email", "is", null)
-    .order("trabalhadores", { ascending: false, nullsFirst: false }).limit(LOTE);
+    .order("grupo", { ascending: true }).order("trabalhadores", { ascending: false, nullsFirst: false }).limit(LOTE);
   const lista = (es ?? []).filter((x) => /@/.test(x.email ?? ""));
   if (simular) {
     const { count } = await sb.from("empresas").select("id", { count: "exact", head: true }).eq("aprovado", true).eq("estado", "por_enviar").eq("opt_out", false);
@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   }
   let enviados = 0, erros = 0;
   for (const x of lista) {
-    const m = emailEmpresa(x.nome, `${Deno.env.get("SUPABASE_URL")}/functions/v1/lembretes-sair?e=${x.token}`);
+    const m = emailEmpresa(x.nome, `${Deno.env.get("SUPABASE_URL")}/functions/v1/lembretes-sair?e=${x.token}`, x.grupo === "cliente_antigo", !x.distrito || x.distrito === "Norte");
     let ok = false, messageId: string | null = null;
     try {
       const r = await fetch("https://api.brevo.com/v3/smtp/email", {
