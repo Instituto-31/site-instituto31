@@ -594,37 +594,96 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
   }
 
 
-  /* ---------- renovações: cartas a caducar ---------- */
+  /* ---------- renovações: cartas e certificados de formação a caducar ---------- */
+  var CERTS = [['cam', 'CAM (FCC/FCD)'], ['tvde', 'TVDE'], ['adr', 'ADR'], ['tcc', 'TCC (crianças)'], ['cmt', 'Táxi (CMT)']];
+  var CERT_NOME = { cam: 'CAM', tvde: 'TVDE', adr: 'ADR', tcc: 'TCC', cmt: 'Táxi' };
+  var CERT_PAG = { cam: 'Curso-CAM-Mercadorias-Continua.html', tvde: 'Curso-TVDE-Continua.html', adr: 'Curso-ADR-Base-Reciclagem.html', tcc: 'Curso-TCC-Continua.html', cmt: 'Curso-Taxi-Continua.html' };
+  var MES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   function addDiasISO(iso, n) { var d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function dataRenov(x) { if (!x.aprox) return x.d.split('-').reverse().join('/'); var p = x.d.split('-'); return MES_PT[+p[1] - 1] + ' ' + p[0]; }
   function carregarRenov() {
     var de = addDiasISO(S.hoje, -30), ate = addDiasISO(S.hoje, S.renovJanela || 120);
-    sb.from('pessoas').select('id,nome,tel,email,carta_vg1,carta_vg2,carta_cats,data_ultima_psi,obs_interna')
-      .or('and(carta_vg1.gte.' + de + ',carta_vg1.lte.' + ate + '),and(carta_vg2.gte.' + de + ',carta_vg2.lte.' + ate + ')').limit(400)
-      .then(function (r) {
+    if (S.renovTipo === 'form') {
+      sb.from('certificados').select('id,pessoa_id,tipo,curso,concluido_em,aproximado,valido_ate,pessoas(id,nome,tel,email,obs_interna,opt_out)').gte('valido_ate', de).lte('valido_ate', ate).order('valido_ate').limit(500).then(function (r) {
+        var C = r.data || [], ids = C.map(function (c) { return c.pessoa_id; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+        if (!ids.length) { S.renov = []; render(); return; }
+        Promise.all([sb.from('certificados').select('pessoa_id,tipo,valido_ate').in('pessoa_id', ids), sb.from('lembretes_enviados').select('pessoa_id,tipo,validade,marco,enviado_em').in('pessoa_id', ids)]).then(function (v) {
+          var mx = {}; (v[0].data || []).forEach(function (x) { var k = x.pessoa_id + '|' + x.tipo; if (!mx[k] || x.valido_ate > mx[k]) mx[k] = x.valido_ate; });
+          var env = {}; (v[1].data || []).forEach(function (x) { var k = x.pessoa_id + '|' + x.tipo + '|' + x.validade; if (!env[k] || x.marco < env[k]) env[k] = x.marco; });
+          S.renov = C.filter(function (c) { return c.pessoas && mx[c.pessoa_id + '|' + c.tipo] <= c.valido_ate; }).map(function (c) { return { p: c.pessoas, cert: c, tipo: c.tipo, d: c.valido_ate, aprox: c.aproximado, auto: env[c.pessoa_id + '|' + c.tipo + '|' + c.valido_ate] }; });
+          render();
+        });
+      });
+      return;
+    }
+    Promise.all([sb.from('pessoas').select('id,nome,tel,email,carta_vg1,carta_vg2,carta_cats,data_ultima_psi,obs_interna,opt_out')
+      .or('and(carta_vg1.gte.' + de + ',carta_vg1.lte.' + ate + '),and(carta_vg2.gte.' + de + ',carta_vg2.lte.' + ate + ')').limit(400),
+      sb.from('lembretes_enviados').select('pessoa_id,tipo,validade,marco').like('tipo', 'carta_%').gte('validade', de)]).then(function (v) {
+        var env = {}; (v[1].data || []).forEach(function (x) { var k = x.pessoa_id + '|' + x.tipo + '|' + x.validade; if (!env[k] || x.marco < env[k]) env[k] = x.marco; });
         var L = [];
-        (r.data || []).forEach(function (p) {
-          [['1', p.carta_vg1], ['2', p.carta_vg2]].forEach(function (g) { if (g[1] && g[1] >= de && g[1] <= ate) L.push({ p: p, g: g[0], d: g[1] }); });
+        (v[0].data || []).forEach(function (p) {
+          [['1', p.carta_vg1], ['2', p.carta_vg2]].forEach(function (g) { if (g[1] && g[1] >= de && g[1] <= ate) L.push({ p: p, g: g[0], d: g[1], auto: env[p.id + '|carta_g' + g[0] + '|' + g[1]] }); });
         });
         L.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
         S.renov = L; render();
       });
   }
   function msgRenov(x) {
-    var n = String(x.p.nome || '').split(' ')[0], d = x.d.split('-').reverse().join('/');
-    return 'Olá ' + n + ', fala o Instituto 31. A validade da sua carta de condução (Grupo ' + x.g + ') ' + (x.d < S.hoje ? 'terminou a ' : 'termina a ') + d + '. Se precisar da avaliação psicológica (psicotécnico) para a renovação, pode marcar aqui: https://instituto31.pt/Psicotecnicos.html?tipo=renovacao ou responder a esta mensagem. Obrigado!';
+    var n = String(x.p.nome || '').split(' ')[0];
+    if (x.cert) return 'Olá ' + n + ', fala o Instituto 31. Pelos nossos registos, o seu certificado ' + CERT_NOME[x.tipo] + (x.aprox ? ' caduca por volta de ' + dataRenov(x) : (x.d < S.hoje ? ' caducou a ' : ' caduca a ') + dataRenov(x)) + '. Para não ficar impedido de trabalhar, faça a formação contínua antes dessa data. Veja as próximas turmas: https://instituto31.pt/' + CERT_PAG[x.tipo] + ' ou responda a esta mensagem. Obrigado!';
+    return 'Olá ' + n + ', fala o Instituto 31. A validade da sua carta de condução (Grupo ' + x.g + ') ' + (x.d < S.hoje ? 'terminou a ' : 'termina a ') + dataRenov(x) + '. Se precisar da avaliação psicológica (psicotécnico) para a renovação, pode marcar aqui: https://instituto31.pt/Psicotecnicos.html?tipo=renovacao ou responder a esta mensagem. Obrigado!';
   }
+  function etiquetaRenov(x) { return x.cert ? 'Certificado ' + CERT_NOME[x.tipo] : 'Grupo ' + x.g; }
   function tabRenov() {
-    var h = '<div class="ph"><div><h1>Cartas a <em>renovar</em></h1><p>Pessoas da base com a carta a caducar. Contacte uma a uma por WhatsApp ou email: a mensagem já vai escrita.</p></div><div class="ph-acts"><div class="seg">' + [[60, '60 dias'], [120, '4 meses'], [180, '6 meses']].map(function (o) { return '<button data-rjan="' + o[0] + '" class="' + ((S.renovJanela || 120) === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div></div>';
+    var form = S.renovTipo === 'form';
+    var h = '<div class="ph"><div><h1>' + (form ? 'Formações a <em>renovar</em>' : 'Cartas a <em>renovar</em>') + '</h1><p>' + (form ? 'Certificados (CAM, TVDE, ADR, TCC, Táxi) a caducar. Quem tem email recebe o aviso automático aos 120, 60 e 15 dias; os outros contacte daqui.' : 'Pessoas da base com a carta a caducar. Quem tem email recebe o aviso automático; os outros contacte daqui, a mensagem já vai escrita.') + '</p></div><div class="ph-acts">'
+      + '<div class="seg">' + [['carta', 'Cartas'], ['form', 'Formações']].map(function (o) { return '<button data-rtipo="' + o[0] + '" class="' + ((S.renovTipo || 'carta') === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>'
+      + '<div class="seg">' + [[60, '60 dias'], [120, '4 meses'], [180, '6 meses']].map(function (o) { return '<button data-rjan="' + o[0] + '" class="' + ((S.renovJanela || 120) === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>'
+      + '<button class="btn btn-gold btn-sm" data-rturma="1">+ Registar turma concluída</button></div></div>';
     if (!S.renov) { carregarRenov(); return h + '<p class="muted">A carregar…</p>'; }
-    if (!S.renov.length) return h + '<div class="card"><p class="muted">Ninguém com a carta a caducar neste período.</p></div>';
+    if (!S.renov.length) return h + '<div class="card"><p class="muted">Ninguém ' + (form ? 'com certificados' : 'com a carta') + ' a caducar neste período.</p></div>';
+    var semEmail = S.renov.filter(function (x) { return !/@/.test(x.p.email || ''); }).length;
+    h += '<p class="muted" style="margin:0 0 10px;font-size:13px">' + S.renov.length + ' a caducar · ' + (S.renov.length - semEmail) + ' com email (aviso automático) · <b>' + semEmail + ' sem email</b> para contactar por WhatsApp</p>';
     return h + '<div class="card" style="padding:0">' + S.renov.map(function (x, i) {
-      var p = x.p, venc = x.d < S.hoje, tel = String(p.tel || '').replace(/\D/g, '').replace(/^351/, ''), feito = /Renovação avisada/.test(p.obs_interna || '');
+      var p = x.p, venc = x.d < S.hoje, tel = String(p.tel || '').replace(/\D/g, '').replace(/^351/, ''), feito = new RegExp('Renovação avisada[^·]*\\(' + etiquetaRenov(x) + '\\)').test(p.obs_interna || '');
       var a = '';
       if (/^9\d{8}$/.test(tel)) a += '<a class="btn btn-sage btn-xs" target="_blank" rel="noopener" data-rcont="' + i + '" href="https://wa.me/351' + tel + '?text=' + encodeURIComponent(msgRenov(x)) + '">WhatsApp</a>';
-      if (p.email) a += '<a class="btn btn-out btn-xs" data-rcont="' + i + '" href="mailto:' + esc(p.email) + '?subject=' + encodeURIComponent('Renovação da carta de condução') + '&body=' + encodeURIComponent(msgRenov(x)) + '">Email</a>';
+      if (p.email) a += '<a class="btn btn-out btn-xs" data-rcont="' + i + '" href="mailto:' + esc(p.email) + '?subject=' + encodeURIComponent(x.cert ? 'Renovação do certificado ' + CERT_NOME[x.tipo] : 'Renovação da carta de condução') + '&body=' + encodeURIComponent(msgRenov(x)) + '">Email</a>';
       if (!a) a = '<span class="muted" style="font-size:12px">sem contacto</span>';
-      return '<div class="slot"><div class="slot-bar" style="background:' + (venc ? 'var(--rose)' : 'var(--gold)') + ';align-self:stretch"></div><div><div class="slot-h" style="font-size:13px">' + x.d.split('-').reverse().join('/') + '</div></div><div class="slot-body"><div class="slot-title">' + esc(p.nome) + ' <span class="chip ' + (venc ? 'cr' : 'co') + '">Grupo ' + x.g + (venc ? ' · caducada' : '') + '</span>' + (feito ? ' <span class="chip cg">avisado</span>' : '') + '</div><div class="slot-sub">' + esc(p.carta_cats || '') + (p.data_ultima_psi ? ' · último psicotécnico ' + p.data_ultima_psi.split('-').reverse().join('/') : '') + '</div></div><div class="slot-acts">' + a + '</div></div>';
+      var chips = '<span class="chip ' + (venc ? 'cr' : 'co') + '">' + esc(etiquetaRenov(x)) + (venc ? ' · caducado' : '') + '</span>';
+      if (x.aprox) chips += ' <span class="chip co">data aproximada</span>';
+      if (x.auto) chips += ' <span class="chip cg">email automático (' + x.auto + ' dias)</span>';
+      if (feito) chips += ' <span class="chip cg">avisado</span>';
+      if (p.opt_out) chips += ' <span class="chip">não quer avisos</span>';
+      var sub = x.cert ? esc(x.cert.curso || '') + (x.cert.concluido_em ? ' · curso de ' + x.cert.concluido_em.split('-').reverse().join('/') : '') : esc(p.carta_cats || '') + (p.data_ultima_psi ? ' · último psicotécnico ' + p.data_ultima_psi.split('-').reverse().join('/') : '');
+      return '<div class="slot"><div class="slot-bar" style="background:' + (venc ? 'var(--rose)' : 'var(--gold)') + ';align-self:stretch"></div><div><div class="slot-h" style="font-size:13px">' + esc(dataRenov(x)) + '</div></div><div class="slot-body"><div class="slot-title">' + esc(p.nome) + ' ' + chips + '</div><div class="slot-sub">' + sub + '</div></div><div class="slot-acts">' + a + '</div></div>';
     }).join('') + '</div><p class="muted" style="font-size:12px;margin-top:8px">Ao carregar em WhatsApp ou Email, a pessoa fica marcada como «avisado» na ficha.</p>';
+  }
+  /* registar a conclusão de uma turma: cria os certificados com a data real */
+  function abrirTurma() { S.turma = { tipo: 'cam', curso: '', data: S.hoje, pessoas: [], busca: null, q: '' }; desenharTurma(); }
+  function lerTurma() { var t = S.turma; ['tipo', 'curso', 'data'].forEach(function (k) { var e = document.getElementById('t-' + k); if (e) t[k] = e.value.trim(); }); var q = document.getElementById('t-q'); if (q) t.q = q.value; }
+  function desenharTurma() {
+    var t = S.turma;
+    var h = '<div class="md-hd"><div><h2>Registar turma concluída</h2><p class="muted" style="margin:2px 0 0">Cria o certificado de cada formando com a data de conclusão. Fica válido 5 anos e o aviso de renovação passa a usar esta data.</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">';
+    h += '<div class="fgrid"><div class="fg"><label>Formação</label><select id="t-tipo">' + CERTS.map(function (c) { return '<option value="' + c[0] + '"' + (t.tipo === c[0] ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select></div>'
+      + '<div class="fg"><label>Data de conclusão</label><input id="t-data" type="date" max="' + S.hoje + '" value="' + esc(t.data) + '"></div>'
+      + '<div class="fg" style="grid-column:1/-1"><label>Curso (como aparece no certificado)</label><input id="t-curso" placeholder="ex.: CAM mercadorias · formação contínua" value="' + esc(t.curso) + '"></div></div>';
+    h += '<h3 style="margin:16px 0 8px;font-size:14px">Formandos (' + t.pessoas.length + ')</h3>';
+    h += t.pessoas.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + t.pessoas.map(function (p) { return '<span class="chip co">' + esc(p.nome) + ' <a href="#" data-ttira="' + p.id + '" style="margin-left:4px;text-decoration:none">✕</a></span>'; }).join('') + '</div>' : '<p class="muted" style="margin:0 0 10px">Ainda nenhum. Procure abaixo e carregue no nome para acrescentar.</p>';
+    h += '<div style="display:flex;gap:8px"><input id="t-q" placeholder="Nome ou NIF" value="' + esc(t.q) + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);padding:8px 11px"><button class="btn btn-out btn-sm" data-tbusca="1">Procurar</button></div>';
+    if (t.busca) h += '<div style="margin-top:6px">' + (t.busca.length ? t.busca.map(function (p) { var ja = t.pessoas.some(function (x) { return x.id === p.id; }); return '<button class="btn btn-out btn-xs" style="margin:2px"' + (ja ? ' disabled' : '') + ' data-tpoe="' + p.id + '">' + esc(p.nome) + (p.nif ? ' · ' + esc(p.nif) : '') + '</button>'; }).join('') : '<span class="muted">Nenhuma ficha encontrada.</span>') + '</div>';
+    h += '<div style="margin-top:18px"><button class="btn btn-gold btn-sm" data-tguardar="1"' + (t.pessoas.length ? '' : ' disabled') + '>Guardar ' + t.pessoas.length + ' certificado' + (t.pessoas.length === 1 ? '' : 's') + '</button></div></div>';
+    modal(h);
+  }
+  function guardarTurma(btn) {
+    lerTurma(); var t = S.turma;
+    if (!t.data) { toast('Falta a data de conclusão.', 'warn'); return; }
+    btn.disabled = true;
+    var linhas = t.pessoas.map(function (p) { return { pessoa_id: p.id, tipo: t.tipo, curso: t.curso || CERTS.find(function (c) { return c[0] === t.tipo; })[1], concluido_em: t.data, aproximado: false, origem: 'gestao' }; });
+    sb.from('certificados').upsert(linhas, { onConflict: 'pessoa_id,tipo,concluido_em' }).then(function (r) {
+      if (r.error) { btn.disabled = false; toast('Não foi possível guardar: ' + r.error.message, 'warn'); return; }
+      fecharModal(); toast(linhas.length + ' certificado' + (linhas.length === 1 ? '' : 's') + ' registado' + (linhas.length === 1 ? '' : 's') + '.'); S.renov = null; render();
+    });
   }
   function tabConsultas() {
     var h = '<div class="ph"><div><h1>Consultas <em>realizadas</em></h1><p>Todas as consultas registadas, de qualquer data. Abra uma para emitir de novo o relatório, o certificado ou a 2.ª via.</p></div><div class="ph-acts"><button class="btn btn-gold btn-sm" data-cantiga="1">+ Consulta antiga</button></div></div>';
@@ -679,8 +738,26 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
     h += '<div class="fgrid">' + CP_C.map(function (c) { return campo('fc-', c, f.C); }).join('') + '</div>';
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px"><button class="btn btn-gold btn-sm" data-fguardar="1">Guardar ficha</button></div>';
     h += '<h3 style="margin:20px 0 8px;font-size:14px">Documentos</h3><p class="muted" style="margin:0 0 8px">Guarda a ficha e descarrega o Word preenchido.</p><div style="display:flex;gap:8px;flex-wrap:wrap">' + [['relatorio', 'Relatório'], ['certificado', 'Certificado'], ['certificado2', 'Certificado · 2.ª via'], ['consentimento', 'Consentimento']].map(function (d) { return '<button class="btn btn-out btn-sm" data-fdoc="' + d[0] + '">' + d[1] + '</button>'; }).join('') + '</div>';
-    h += '<p class="muted" style="font-size:12px;margin-top:8px">A 2.ª via é igual ao certificado, mas sem local, data, assinatura e vinheta.</p></div>';
+    h += '<p class="muted" style="font-size:12px;margin-top:8px">A 2.ª via é igual ao certificado, mas sem local, data, assinatura e vinheta.</p>';
+    if (f.P.id) {
+      h += '<h3 style="margin:20px 0 8px;font-size:14px">Certificados de formação</h3>';
+      if (!f.certs) { sb.from('certificados').select('id,tipo,curso,concluido_em,aproximado,valido_ate').eq('pessoa_id', f.P.id).order('concluido_em', { ascending: false }).then(function (r) { if (S.ficha === f) { f.certs = r.data || []; lerFicha(); desenharFicha(); } }); h += '<p class="muted">A carregar…</p>'; }
+      else {
+        h += f.certs.length ? '<div style="font-size:13.5px;margin-bottom:10px">' + f.certs.map(function (c) { return '<div style="padding:4px 0;border-bottom:1px solid var(--border)"><b>' + esc(CERT_NOME[c.tipo] || c.tipo) + '</b> · ' + esc(c.curso || '') + ' · concluído ' + (c.aproximado ? '<span class="muted">(aprox.)</span> ' : '') + c.concluido_em.split('-').reverse().join('/') + ' · válido até ' + c.valido_ate.split('-').reverse().join('/') + '</div>'; }).join('') + '</div>' : '<p class="muted" style="margin:0 0 8px">Sem certificados registados.</p>';
+        h += '<div class="fgrid"><div class="fg"><label>Formação</label><select id="fk-tipo">' + CERTS.map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; }).join('') + '</select></div><div class="fg"><label>Data de conclusão</label><input id="fk-data" type="date" max="' + S.hoje + '"></div></div><div style="margin-top:8px"><button class="btn btn-out btn-sm" data-fcert="1">Acrescentar certificado</button></div>';
+      }
+    }
+    h += '</div>';
     modal(h);
+  }
+  function guardarCertFicha(btn) {
+    var f = S.ficha, tp = document.getElementById('fk-tipo').value, dt = document.getElementById('fk-data').value;
+    if (!dt) { toast('Escolha a data de conclusão.', 'warn'); return; }
+    lerFicha(); btn.disabled = true;
+    sb.from('certificados').upsert({ pessoa_id: f.P.id, tipo: tp, curso: CERTS.find(function (c) { return c[0] === tp; })[1], concluido_em: dt, aproximado: false, origem: 'gestao' }, { onConflict: 'pessoa_id,tipo,concluido_em' }).then(function (r) {
+      if (r.error) { btn.disabled = false; toast('Não foi possível: ' + r.error.message, 'warn'); return; }
+      toast('Certificado registado.'); f.certs = null; S.renov = null; desenharFicha();
+    });
   }
   function guardarFicha() {
     lerFicha(); var f = S.ficha, P = f.P, C = f.C;
@@ -802,11 +879,18 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
 
   root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-rjan],[data-rcont],[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
+    var t = e.target.closest('[data-rtipo],[data-rturma],[data-tbusca],[data-tpoe],[data-ttira],[data-tguardar],[data-fcert],[data-rjan],[data-rcont],[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
     if (!t) return;
     var d = t.dataset;
     if (d.rjan) { S.renovJanela = +d.rjan; S.renov = null; render(); return; }
-    if (d.rcont) { var xr = S.renov[+d.rcont]; if (xr) { var nota = (xr.p.obs_interna ? xr.p.obs_interna + ' · ' : '') + 'Renovação avisada ' + S.hoje.split('-').reverse().join('/') + ' (Grupo ' + xr.g + ')'; xr.p.obs_interna = nota; sb.from('pessoas').update({ obs_interna: nota }).eq('id', xr.p.id).then(function () { render(); }); } return; }
+    if (d.rtipo) { S.renovTipo = d.rtipo; S.renov = null; render(); return; }
+    if (d.rturma) { abrirTurma(); return; }
+    if (d.tbusca) { lerTurma(); var tq = (S.turma.q || '').trim(); if (tq.length < 3) { toast('Escreva pelo menos 3 letras.', 'warn'); return; } var tqq = sb.from('pessoas').select('id,nome,nif').limit(10); (/^\d{6,}$/.test(tq) ? tqq.eq('nif', tq) : tqq.ilike('nome', '%' + tq.replace(/[%_]/g, '') + '%')).then(function (r) { S.turma.busca = r.data || []; desenharTurma(); }); return; }
+    if (d.tpoe) { lerTurma(); var tp = (S.turma.busca || []).find(function (p) { return p.id === d.tpoe; }); if (tp) { S.turma.pessoas.push(tp); S.turma.q = ''; S.turma.busca = null; } desenharTurma(); return; }
+    if (d.ttira) { e.preventDefault(); lerTurma(); S.turma.pessoas = S.turma.pessoas.filter(function (p) { return p.id !== d.ttira; }); desenharTurma(); return; }
+    if (d.tguardar) { guardarTurma(t); return; }
+    if (d.fcert) { guardarCertFicha(t); return; }
+    if (d.rcont) { var xr = S.renov[+d.rcont]; if (xr) { var nota = (xr.p.obs_interna ? xr.p.obs_interna + ' · ' : '') + 'Renovação avisada ' + S.hoje.split('-').reverse().join('/') + ' (' + etiquetaRenov(xr) + ')'; xr.p.obs_interna = nota; sb.from('pessoas').update({ obs_interna: nota }).eq('id', xr.p.id).then(function () { render(); }); } return; }
     if (d.cantiga) { consultaAntiga(); return; }
     if (d.cabrir) { abrirConsulta(d.cabrir); return; }
     if (d.cbusca) { S.cq = (document.getElementById('cq') || {}).value || ''; S.consultas = null; render(); return; }

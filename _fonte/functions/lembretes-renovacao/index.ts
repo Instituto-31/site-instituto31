@@ -101,16 +101,25 @@ Deno.serve(async (req) => {
   // certificados
   const { data: cs } = await sb.from("certificados").select("pessoa_id,tipo,curso,valido_ate,aproximado,pessoas(nome,email,token_saida,opt_out)")
     .gte("valido_ate", hoje).lte("valido_ate", ate).limit(2000);
+  // se a pessoa já fez um curso mais recente do mesmo tipo, o antigo não conta
+  const ids = [...new Set((cs ?? []).map((c) => c.pessoa_id))];
+  const { data: rec } = ids.length ? await sb.from("certificados").select("pessoa_id,tipo,valido_ate").in("pessoa_id", ids) : { data: [] };
+  const maisRecente = new Map<string, string>();
+  for (const r of rec ?? []) { const k = `${r.pessoa_id}|${r.tipo}`; if (!maisRecente.has(k) || r.valido_ate > maisRecente.get(k)!) maisRecente.set(k, r.valido_ate); }
   for (const c of cs ?? []) {
     // deno-lint-ignore no-explicit-any
     const p: any = c.pessoas;
     if (!p || p.opt_out || !/@/.test(p.email ?? "")) continue;
+    if (maisRecente.get(`${c.pessoa_id}|${c.tipo}`)! > c.valido_ate) continue;
     itens.push({ pessoa_id: c.pessoa_id, nome: p.nome, email: p.email, token: p.token_saida, tipo: c.tipo, validade: c.valido_ate, aproximado: c.aproximado, curso: c.curso ?? "" });
   }
   // marco de cada aviso e o que já saiu
   const { data: ja } = await sb.from("lembretes_enviados").select("pessoa_id,tipo,validade,marco").gte("validade", hoje);
   const feito = new Set((ja ?? []).map((x) => `${x.pessoa_id}|${x.tipo}|${x.validade}|${x.marco}`));
-  const pendentes = itens.map((it) => ({ it, dias: difDias(hoje, it.validade) }))
+  // o mesmo aviso não vai duas vezes para o mesmo email (fichas repetidas)
+  const vistos = new Set<string>();
+  const unicos = itens.filter((it) => { const k = `${it.email.trim().toLowerCase()}|${it.tipo}|${it.validade}`; if (vistos.has(k)) return false; vistos.add(k); return true; });
+  const pendentes = unicos.map((it) => ({ it, dias: difDias(hoje, it.validade) }))
     .map((x) => ({ ...x, marco: MARCOS.find((m) => x.dias <= m)! }))
     .filter((x) => x.marco && !feito.has(`${x.it.pessoa_id}|${x.it.tipo}|${x.it.validade}|${x.marco}`))
     // também não repete um marco maior se já saiu um mais próximo
