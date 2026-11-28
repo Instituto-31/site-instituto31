@@ -1,6 +1,6 @@
 // Página da equipa: ver a agenda e marcar psicotécnicos em nome do cliente,
 // enviando o pedido MB WAY diretamente para o telemóvel dele.
-// Protegido pela chave da equipa (segredo EQUIPA_CHAVE), enviada no corpo do pedido.
+// Protegido pelo login da Gestão (Supabase Auth + tabela equipa).
 import { addDias, agenda, agoraLisboa, db, preco, slotUtc, SLOT_MIN } from "./_agenda.ts";
 import { criarEventoGoogle } from "./_gcal.ts";
 import { emailConfirmacao } from "./_email.ts";
@@ -74,12 +74,6 @@ function nifValido(n: string): boolean {
   const r = s % 11;
   return (r < 2 ? 0 : 11 - r) === Number(n[8]);
 }
-function igual(a: string, b: string) {
-  if (!a || !b || a.length !== b.length) return false;
-  let x = 0;
-  for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return x === 0;
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(req) });
@@ -87,9 +81,9 @@ Deno.serve(async (req) => {
   const sb = db();
   try {
     const b = await req.json().catch(() => ({}));
-    const chave = (Deno.env.get("EQUIPA_CHAVE") ?? "").trim();
+    // Só entra quem tem sessão na Gestão (a palavra-passe partilhada antiga foi desligada a 28/11/2026)
     const membro = await membroEquipa(sb, req);
-    if (!membro && !igual(String(b.chave ?? "").trim(), chave)) {
+    if (!membro) {
       await new Promise((r) => setTimeout(r, 1200));
       return json(req, { erro: "Palavra-passe errada." }, 401);
     }
