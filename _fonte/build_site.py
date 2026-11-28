@@ -229,7 +229,7 @@ ExpiresByType image/jpeg "access plus 30 days"
 ExpiresByType image/svg+xml "access plus 30 days"
 </IfModule>
 """)
-    open(f"{OUT}/robots.txt", "w").write("User-agent: *\nAllow: /\nSitemap: https://instituto31.pt/sitemap.xml\n")
+    open(f"{OUT}/robots.txt", "w").write("User-agent: *\nAllow: /\nDisallow: /equipa.html\nSitemap: https://instituto31.pt/sitemap.xml\n")
     paginas = [f for f, _, _ in report] + ["Psicotecnico-Braga.html"]
     paginas += ["testes-de-tvde/", "testes-de-taxi/", "testes/", "testes-adr/", "testes-conselheiro-de-seguranca/"]  # ainda no WordPress
     urls = "".join(f"<url><loc>https://instituto31.pt/{'' if f == 'index.html' else f}</loc></url>" for f in paginas)
