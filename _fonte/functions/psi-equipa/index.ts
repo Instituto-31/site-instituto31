@@ -1,7 +1,35 @@
 // Página da equipa: ver a agenda e marcar psicotécnicos em nome do cliente,
 // enviando o pedido MB WAY diretamente para o telemóvel dele.
 // Protegido pela chave da equipa (segredo EQUIPA_CHAVE), enviada no corpo do pedido.
-import { addDias, agenda, agoraLisboa, cors, db, json, preco } from "./_agenda.ts";
+import { addDias, agenda, agoraLisboa, db, preco } from "./_agenda.ts";
+const ORIGENS = ["https://instituto31.pt", "https://www.instituto31.pt", "https://gestao.instituto31.pt"];
+function cors(req: Request) {
+  const o = req.headers.get("origin") ?? "";
+  const ok = ORIGENS.includes(o) || o.startsWith("http://localhost");
+  return { "Access-Control-Allow-Origin": ok ? o : ORIGENS[0], "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "content-type, authorization, apikey, x-client-info", "Vary": "Origin" };
+}
+function json(req: Request, body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { ...cors(req), "Content-Type": "application/json" } });
+}
+// deno-lint-ignore no-explicit-any
+async function membroEquipa(sb: any, req: Request): Promise<{ nome: string; email: string } | null> {
+  const tok = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!tok || tok.split(".").length !== 3) return null;
+  const { data } = await sb.auth.getUser(tok);
+  const u = data?.user;
+  if (!u?.email || !u.email_confirmed_at) return null;
+  const { data: e } = await sb.from("equipa").select("nome,email,ativo").ilike("email", u.email).maybeSingle();
+  return e && e.ativo ? { nome: e.nome, email: e.email } : null;
+}
+async function apagarEventoGoogle(id: string, data: string) {
+  const su = Deno.env.get("GCAL_SCRIPT_URL"), tk = Deno.env.get("GCAL_SCRIPT_TOKEN");
+  if (!su || !tk) return false;
+  try {
+    const r = await fetch(`${su}?token=${encodeURIComponent(tk)}`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ acao: "apagar", id, data }), redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const j = await r.json().catch(() => ({}));
+    return !!j.ok;
+  } catch (_) { return false; }
+}
 const MBWAY_URL = "https://api.ifthenpay.com/spg/payment/mbway";
 
 function nifValido(n: string): boolean {
@@ -25,10 +53,12 @@ Deno.serve(async (req) => {
   try {
     const b = await req.json().catch(() => ({}));
     const chave = (Deno.env.get("EQUIPA_CHAVE") ?? "").trim();
-    if (!igual(String(b.chave ?? "").trim(), chave)) {
+    const membro = await membroEquipa(sb, req);
+    if (!membro && !igual(String(b.chave ?? "").trim(), chave)) {
       await new Promise((r) => setTimeout(r, 1200));
       return json(req, { erro: "Palavra-passe errada." }, 401);
     }
+    const quem = membro?.nome ?? "equipa";
 
     if (b.acao === "entrar") return json(req, { ok: true });
 
@@ -36,10 +66,10 @@ Deno.serve(async (req) => {
       const dias = await agenda(sb);
       const hoje = agoraLisboa().data;
       const { data: ms } = await sb.from("marcacoes_psi")
-        .select("id,data,hora,nome,telemovel,estado,tipo,lingua,valor,obs")
-        .in("estado", ["pendente", "pago"]).gte("data", hoje).lte("data", addDias(hoje, 21))
+        .select("id,data,hora,nome,telemovel,email,nif,estado,tipo,lingua,formando,valor,obs,order_id,fatura_estado")
+        .in("estado", ["pendente", "pago", "realizado", "faltou"]).gte("data", addDias(hoje, membro ? -14 : 0)).lte("data", addDias(hoje, 21))
         .order("data").order("hora");
-      return json(req, { dias, marcacoes: ms ?? [] });
+      return json(req, { dias, marcacoes: ms ?? [], hoje, eu: membro });
     }
 
     if (b.acao === "marcar") {
@@ -64,7 +94,7 @@ Deno.serve(async (req) => {
       const { data: m, error } = await sb.from("marcacoes_psi").insert({
         data: b.data, hora: b.hora, tipo, lingua, formando, nome, telemovel: tel, email: email || null, nif: nif || null, valor,
         order_id: orderId, codigo: formando && codigo ? codigo : null, consent_marketing: false, consent_rgpd_em: new Date().toISOString(),
-        obs: "Marcado pela equipa (WhatsApp/telefone)",
+        obs: `Marcado por ${quem} (WhatsApp/telefone)`,
       }).select("id").single();
       if (error) return json(req, { erro: "Essa hora acabou de ficar ocupada. Escolha outra." }, 409);
       if (formando && codigo) {
@@ -85,6 +115,27 @@ Deno.serve(async (req) => {
       }
       await sb.from("marcacoes_psi").update({ request_id: j.RequestId }).eq("id", m.id);
       return json(req, { id: m.id, valor, estado: "pendente" });
+    }
+
+    if (b.acao === "estado") {
+      if (!/^[0-9a-f-]{36}$/.test(String(b.id ?? ""))) return json(req, { erro: "id" }, 400);
+      const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/psi-estado?id=${b.id}`, { signal: AbortSignal.timeout(20000) });
+      return json(req, await r.json().catch(() => ({ estado: "pendente" })));
+    }
+
+    // realizado / faltou / cancelar — só com login individual
+    if (b.acao === "mudar") {
+      if (!membro) return json(req, { erro: "Entre com a sua conta para fazer isto." }, 401);
+      const novo = String(b.estado ?? "");
+      if (!["realizado", "faltou", "cancelado", "pago"].includes(novo)) return json(req, { erro: "estado" }, 400);
+      const { data: m } = await sb.from("marcacoes_psi").select("id,data,estado,obs").eq("id", b.id).maybeSingle();
+      if (!m) return json(req, { erro: "Marcação não encontrada." }, 404);
+      if (!["pago", "realizado", "faltou"].includes(m.estado)) return json(req, { erro: "Só se pode alterar marcações pagas." }, 400);
+      const nota = `${new Date().toISOString().slice(0, 16).replace("T", " ")} ${quem}: ${novo}${b.motivo ? " (" + String(b.motivo).slice(0, 200) + ")" : ""}`;
+      await sb.from("marcacoes_psi").update({ estado: novo, obs: [m.obs, nota].filter(Boolean).join(" · ").slice(0, 2000) }).eq("id", m.id);
+      let google = null;
+      if (novo === "cancelado") google = await apagarEventoGoogle(m.id, m.data);
+      return json(req, { ok: true, google });
     }
 
     return json(req, { erro: "ação desconhecida" }, 400);

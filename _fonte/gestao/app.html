@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Instituto 31 · Gestão</title>
+<link rel="icon" href="https://instituto31.pt/assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+/*OLDCSS*/
+/* ── extra (2026-11) ── */
+.nav-i.off{opacity:.45;cursor:default}
+.nav-i.off:hover{background:none;color:rgba(255,255,255,.45)}
+.soon{margin-left:auto;font-size:9px;color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:0 6px}
+.burger{display:none;background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink)}
+.dias{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.dchip{flex:0 0 58px;border:1px solid var(--border);background:var(--card);border-radius:9px;padding:6px 2px;text-align:center;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--ink)}
+.dchip small{display:block;font-size:10px;color:var(--ink3)}.dchip b{display:block;font-size:17px;font-weight:600}
+.dchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}.dchip.on small{color:rgba(255,255,255,.6)}
+.dchip:disabled{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px}
+.hchip{border:1px solid var(--border);background:var(--card);border-radius:8px;padding:9px 0;font-family:'Outfit',sans-serif;font-size:14px;font-weight:500;cursor:pointer;color:var(--ink)}
+.hchip.on{background:var(--gold);border-color:var(--gold);color:#fff}
+.hchip:disabled{opacity:.35;cursor:not-allowed;text-decoration:line-through}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.seg button{border:none;background:var(--card);padding:7px 12px;font-family:'Outfit',sans-serif;font-size:12.5px;cursor:pointer;color:var(--ink2)}
+.seg button.on{background:var(--ink);color:#fff}
+.dia-h{font-size:12px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.8px;margin:18px 0 8px}
+.dia-h.hoje{color:var(--gold)}
+.slot{align-items:center}
+.slot-acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.espera{text-align:center;padding:10px 0}
+.big{font-size:42px;font-weight:600;margin:10px 0}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--ink)}
+.login{background:var(--card);border-radius:14px;padding:28px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px}
+.login .logo-name{color:var(--ink);font-size:22px}
+.err{color:var(--rose);font-size:13px;font-weight:500}
+.muted{color:var(--ink3);font-size:12.5px}
+.link{background:none;border:none;color:var(--teal);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12.5px;padding:0;text-decoration:underline}
+@media (max-width:860px){
+  .sb{transform:translateX(-100%);transition:transform .2s}
+  .sb.open{transform:none}
+  .main{margin-left:0}
+  .burger{display:block}
+  .g4{grid-template-columns:1fr 1fr}.g2,.fgrid{grid-template-columns:1fr}
+  .content{padding:16px 12px}
+  .slot{flex-wrap:wrap}.slot-acts{width:100%;justify-content:flex-start}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="mo" id="mo"><div class="md" id="md"></div></div>
+<div id="toast"></div>
+<script>
+(function () {
+  var SB_URL = 'https://dzccpluaszhcroehktrg.supabase.co';
+  var SB_KEY = 'sb_publishable_u_-22i34glAsls2-rS51YQ_uynfE2w8';
+  var FN = SB_URL + '/functions/v1';
+  var sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: 'implicit' } });
+  var root = document.getElementById('root');
+  var tipoLink = (location.hash.match(/type=([a-z]+)/) || [])[1] || '';
+
+  var DS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'], MS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  var DL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  var LNG = { pt: 'PT', en: 'EN', fr: 'FR' };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function dl(iso) { var d = new Date(iso + 'T12:00:00'); return DL[d.getDay()] + ', ' + d.getDate() + ' ' + MS[d.getMonth()]; }
+  function hhmm(h) { return String(h || '').slice(0, 5); }
+  function toast(t, k) { var e = document.getElementById('toast'); e.textContent = t; e.className = 'show ' + (k || 'ok'); clearTimeout(toast.t); toast.t = setTimeout(function () { e.className = ''; }, 3200); }
+  function hojeISO() { var p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); return p; }
+
+  var S = { user: null, eu: null, pag: 'painel', tab: 'agenda', filtro: 'hoje', dias: null, marc: [], hoje: hojeISO(),
+    f: { tipo: 'obtencao', lingua: 'pt', formando: false, dia: -1, hora: '' }, campos: {}, envio: false, msg: '', espera: null, timer: null,
+    bloq: null, cods: null, codFiltro: 'livre' };
+
+  // ───────────── chamadas
+  function fn(acao, extra) {
+    return sb.auth.getSession().then(function (r) {
+      var t = r.data.session && r.data.session.access_token;
+      return fetch(FN + '/psi-equipa', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify(Object.assign({ acao: acao }, extra || {})) })
+        .then(function (x) { return x.json().then(function (j) { j._s = x.status; return j; }); });
+    });
+  }
+  function carregarAgenda() {
+    return fn('agenda').then(function (j) {
+      if (j._s === 401) { sair(); return; }
+      S.dias = j.dias || []; S.marc = j.marcacoes || []; if (j.hoje) S.hoje = j.hoje;
+      var f = S.f;
+      if (f.dia >= 0 && S.dias[f.dia] && f.hora && S.dias[f.dia].livres.indexOf(f.hora) < 0) f.hora = '';
+      if (f.dia < 0) for (var i = 0; i < S.dias.length; i++) if (S.dias[i].livres.length) { f.dia = i; break; }
+      render();
+    }).catch(function () { toast('Sem ligação ao servidor.', 'warn'); });
+  }
+  function carregarBloq() {
+    sb.from('psi_bloqueios').select('id,data,hora,motivo').gte('data', S.hoje).order('data').order('hora').then(function (r) { S.bloq = r.data || []; render(); });
+  }
+  function carregarCods() {
+    sb.from('codigos_formando').select('id,codigo,nome,turma,estado,entregue_em,usado_em,validade').order('codigo').then(function (r) { S.cods = r.data || []; render(); });
+  }
+
+  // ───────────── login
+  function ecraLogin(modo, msg) {
+    var h = '<div class="login-wrap"><form class="login" id="flogin"><div><div class="logo-name">instituto<em>31</em></div><div class="muted">Gestão · área reservada à equipa</div></div>';
+    if (modo === 'nova') {
+      h += '<p class="muted">Escolha a sua palavra-passe (mínimo 8 caracteres).</p>';
+      h += '<div class="fg"><label>Nova palavra-passe</label><input id="l-p1" type="password" autocomplete="new-password" required minlength="8"></div>';
+      h += '<div class="fg"><label>Repetir</label><input id="l-p2" type="password" autocomplete="new-password" required minlength="8"></div>';
+      if (msg) h += '<p class="err">' + esc(msg) + '</p>';
+      h += '<button class="btn btn-gold" type="submit" data-modo="nova" style="justify-content:center;padding:11px">Guardar e entrar</button>';
+    } else if (modo === 'recuperar') {
+      h += '<p class="muted">Escreva o seu email. Enviamos um link para escolher uma palavra-passe nova.</p>';
+      h += '<div class="fg"><label>Email</label><input id="l-email" type="email" autocomplete="username" required></div>';
+      if (msg) h += '<p class="' + (/enviad/i.test(msg) ? 'muted' : 'err') + '">' + esc(msg) + '</p>';
+      h += '<button class="btn btn-gold" type="submit" data-modo="recuperar" style="justify-content:center;padding:11px">Enviar link</button>';
+      h += '<button class="link" type="button" id="l-voltar">Voltar</button>';
+    } else {
+      h += '<div class="fg"><label>Email</label><input id="l-email" type="email" autocomplete="username" required></div>';
+      h += '<div class="fg"><label>Palavra-passe</label><input id="l-pass" type="password" autocomplete="current-password" required></div>';
+      if (msg) h += '<p class="err">' + esc(msg) + '</p>';
+      h += '<button class="btn btn-gold" type="submit" data-modo="entrar" style="justify-content:center;padding:11px">Entrar</button>';
+      h += '<button class="link" type="button" id="l-esqueci">Esqueci-me da palavra-passe</button>';
+    }
+    root.innerHTML = h + '</form></div>';
+    var fl = document.getElementById('flogin');
+    fl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var modo2 = fl.querySelector('button[type=submit]').dataset.modo;
+      if (modo2 === 'entrar') {
+        sb.auth.signInWithPassword({ email: document.getElementById('l-email').value.trim(), password: document.getElementById('l-pass').value })
+          .then(function (r) { if (r.error) ecraLogin('entrar', 'Email ou palavra-passe errados.'); else entrar(r.data.session); });
+      } else if (modo2 === 'recuperar') {
+        sb.auth.resetPasswordForEmail(document.getElementById('l-email').value.trim(), { redirectTo: location.origin + '/' })
+          .then(function () { ecraLogin('recuperar', 'Se o email pertencer à equipa, foi enviado um link. Veja a caixa de correio.'); });
+      } else {
+        var p1 = document.getElementById('l-p1').value, p2 = document.getElementById('l-p2').value;
+        if (p1.length < 8) return ecraLogin('nova', 'Use pelo menos 8 caracteres.');
+        if (p1 !== p2) return ecraLogin('nova', 'As duas palavras-passe não são iguais.');
+        sb.auth.updateUser({ password: p1 }).then(function (r) {
+          if (r.error) return ecraLogin('nova', 'Não foi possível guardar: ' + r.error.message);
+          tipoLink = ''; history.replaceState(null, '', location.pathname);
+          sb.auth.getSession().then(function (x) { entrar(x.data.session); });
+        });
+      }
+    });
+    var a = document.getElementById('l-esqueci'); if (a) a.onclick = function () { ecraLogin('recuperar'); };
+    var b = document.getElementById('l-voltar'); if (b) b.onclick = function () { ecraLogin('entrar'); };
+  }
+  function entrar(sess) {
+    if (!sess) return ecraLogin('entrar');
+    if (tipoLink === 'invite' || tipoLink === 'recovery') return ecraLogin('nova');
+    S.user = sess.user;
+    sb.from('equipa').select('nome,perfil,ativo').maybeSingle().then(function (r) {
+      if (!r.data || !r.data.ativo) { sb.auth.signOut(); return ecraLogin('entrar', 'Esta conta não pertence à equipa do Instituto 31.'); }
+      S.eu = r.data; render(); carregarAgenda();
+    });
+  }
+  function sair() { sb.auth.signOut().then(function () { S.user = null; S.eu = null; ecraLogin('entrar'); }); }
+
+  // ───────────── layout
+  var MENU = [
+    ['Principal', [['painel', '◈', 'Painel'], ['psi', '◎', 'Psicotécnicos']]],
+    ['Base de Dados', [['bd', '◉', 'Pessoas'], ['preinsc', '◐', 'Pré-inscrições']]],
+    ['Formação', [['turmas', '◫', 'Turmas & Cursos'], ['dossier', '◧', 'Dossier DGERT']]],
+    ['Administrativo', [['faturacao', '◈', 'Faturação'], ['emails', '✉', 'Emails'], ['salas', '◫', 'Salas'], ['formadores', '◉', 'Formadores'], ['rh', '◈', 'RH']]],
+    ['Sistema', [['config', '◎', 'Configurações']]]
+  ];
+  var ATIVAS = { psi: 1, painel: 1 };
+  function render() {
+    if (!S.eu) return;
+    var ini = (S.eu.nome || '?').split(' ').map(function (x) { return x[0]; }).slice(0, 2).join('');
+    var h = '<div class="app"><aside class="sb" id="sb"><div class="sb-logo"><div class="logo-name">instituto<em>31</em></div><div class="logo-sub">Gestão Integrada</div></div><nav>';
+    MENU.forEach(function (sec) {
+      h += '<div class="nav-sec">' + sec[0] + '</div>';
+      sec[1].forEach(function (it) {
+        var on = ATIVAS[it[0]], badge = '';
+        if (it[0] === 'psi') { var n = S.marc.filter(function (m) { return m.data === S.hoje && (m.estado === 'pago' || m.estado === 'pendente'); }).length; if (n) badge = '<span class="nb nb-b">' + n + '</span>'; }
+        h += '<div class="nav-i' + (S.pag === it[0] ? ' on' : '') + (on ? '' : ' off') + '"' + (on ? ' data-pag="' + it[0] + '"' : '') + '><span class="nav-ico">' + it[1] + '</span>' + it[2] + (on ? badge : '<span class="soon">em breve</span>') + '</div>';
+      });
+    });
+    h += '</nav><div class="sb-user"><div class="sb-av">' + esc(ini) + '</div><div style="flex:1"><div class="sb-nm">' + esc(S.eu.nome) + '</div><div class="sb-rl">' + esc(S.eu.perfil === 'secretaria' ? 'Secretaria' : 'Administração') + '</div></div><button class="link" id="sair" style="color:rgba(255,255,255,.5)">Sair</button></div></aside>';
+    h += '<div class="main"><div class="topbar"><button class="burger" id="burger" aria-label="Menu">☰</button><div class="tb-title">' + (S.pag === 'psi' ? 'Psicotécnicos' : 'Painel') + '</div></div><div class="content">';
+    h += S.pag === 'psi' ? pagPsi() : pagPainel();
+    h += '</div></div></div>';
+    root.innerHTML = h;
+  }
+
+  // ───────────── painel
+  function pagPainel() {
+    var hoje = S.marc.filter(function (m) { return m.data === S.hoje; });
+    var prox = S.marc.filter(function (m) { return m.data > S.hoje && (m.estado === 'pago'); });
+    var livresHoje = S.dias ? (S.dias.find(function (d) { return d.data === S.hoje; }) || { livres: [] }).livres.length : 0;
+    var h = '<div class="ph"><div><h1>Bom dia, <em>' + esc((S.eu.nome || '').split(' ')[0]) + '</em></h1><p>' + esc(dl(S.hoje)) + '</p></div><div class="ph-acts"><button class="btn btn-gold" data-ir="marcar">+ Marcar psicotécnico</button></div></div>';
+    h += '<div class="g4" style="margin-bottom:18px">';
+    h += '<div class="stat gold"><div class="stat-v">' + hoje.filter(function (m) { return m.estado !== 'pendente'; }).length + '</div><div class="stat-l">Psicotécnicos hoje</div></div>';
+    h += '<div class="stat teal"><div class="stat-v">' + prox.length + '</div><div class="stat-l">Próximos (pagos)</div></div>';
+    h += '<div class="stat sage"><div class="stat-v">' + livresHoje + '</div><div class="stat-l">Vagas livres hoje</div></div>';
+    h += '<div class="stat rose"><div class="stat-v">' + S.marc.filter(function (m) { return m.estado === 'pendente'; }).length + '</div><div class="stat-l">À espera de pagamento</div></div></div>';
+    h += '<div class="card"><div class="card-hd">Hoje</div>' + (hoje.length ? hoje.map(slot).join('') : '<p class="muted">Sem psicotécnicos marcados para hoje.</p>') + '</div>';
+    h += '<div class="alert at" style="margin-top:16px">As restantes secções (pessoas, turmas, faturação…) estão a ser ligadas aos dados reais e aparecem aqui nas próximas fases.</div>';
+    return h;
+  }
+
+  // ───────────── psicotécnicos
+  function pagPsi() {
+    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['bloq', 'Bloquear horas'], ['cods', 'Códigos de formando']];
+    var h = '<div class="perfil-tabs">' + tabs.map(function (t) { return '<div class="ptab' + (S.tab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</div>'; }).join('') + '</div>';
+    if (S.tab === 'agenda') h += tabAgenda();
+    else if (S.tab === 'marcar') h += tabMarcar();
+    else if (S.tab === 'bloq') h += tabBloq();
+    else h += tabCods();
+    return h;
+  }
+  function chipEstado(m) {
+    var c = { pago: ['co', 'Pago'], pendente: ['cn', 'A aguardar pagamento'], realizado: ['cg', 'Realizado'], faltou: ['cr', 'Faltou'] }[m.estado] || ['cn', m.estado];
+    return '<span class="chip ' + c[0] + '">' + c[1] + '</span>';
+  }
+  function slot(m) {
+    var cor = { pago: 'var(--gold)', pendente: 'var(--ink3)', realizado: 'var(--sage)', faltou: 'var(--rose)' }[m.estado] || 'var(--ink3)';
+    var sub = esc(m.telemovel) + ' · ' + (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + (m.lingua !== 'pt' ? ' · ' + LNG[m.lingua] : '') + (m.formando ? ' · formando' : '') + ' · ' + Number(m.valor) + ' €' + (/equipa|WhatsApp/i.test(m.obs || '') ? ' · pela equipa' : ' · pelo site');
+    var a = '';
+    if (m.estado === 'pago' && m.data <= S.hoje) a += '<button class="btn btn-sage btn-xs" data-mudar="realizado" data-id="' + m.id + '">Realizado</button><button class="btn btn-out btn-xs" data-mudar="faltou" data-id="' + m.id + '">Faltou</button>';
+    if (m.estado === 'pago') a += '<button class="btn btn-out btn-xs" data-cancelar="' + m.id + '">Cancelar</button>';
+    if (m.estado === 'realizado' || m.estado === 'faltou') a += '<button class="btn btn-out btn-xs" data-mudar="pago" data-id="' + m.id + '">Desfazer</button>';
+    return '<div class="slot"><div class="slot-bar" style="background:' + cor + ';align-self:stretch"></div><div><div class="slot-h">' + hhmm(m.hora) + '</div></div><div class="slot-body" style="cursor:pointer" data-ver="' + m.id + '"><div class="slot-title">' + esc(m.nome) + ' ' + chipEstado(m) + '</div><div class="slot-sub">' + sub + '</div></div><div class="slot-acts">' + a + '</div></div>';
+  }
+  function tabAgenda() {
+    var h = '<div class="ph"><div><h1>Agenda de <em>psicotécnicos</em></h1><p>Marcações do site e da equipa. Toque no nome para ver os detalhes.</p></div><div class="ph-acts"><div class="seg">' +
+      [['hoje', 'Hoje'], ['prox', 'Próximos'], ['ant', 'Últimos 14 dias']].map(function (o) { return '<button data-filtro="' + o[0] + '" class="' + (S.filtro === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') +
+      '</div><button class="btn btn-out btn-sm" id="atualizar">↻</button><button class="btn btn-gold btn-sm" data-ir="marcar">+ Marcar</button></div></div>';
+    if (!S.dias) return h + '<p class="muted">A carregar…</p>';
+    var lista = S.marc.filter(function (m) { return S.filtro === 'hoje' ? m.data === S.hoje : S.filtro === 'prox' ? m.data >= S.hoje : m.data < S.hoje; });
+    if (S.filtro === 'ant') lista = lista.slice().reverse();
+    if (!lista.length) return h + '<div class="card"><p class="muted">' + (S.filtro === 'hoje' ? 'Sem psicotécnicos marcados para hoje.' : 'Sem marcações neste período.') + '</p></div>';
+    var ult = '';
+    lista.forEach(function (m) { if (m.data !== ult) { ult = m.data; h += '<div class="dia-h' + (m.data === S.hoje ? ' hoje' : '') + '">' + (m.data === S.hoje ? 'Hoje · ' : '') + esc(dl(m.data)) + '</div>'; } h += slot(m); });
+    return h;
+  }
+  function precoF() { var f = S.f; return f.lingua !== 'pt' ? 70 : f.formando ? 25 : 35; }
+  function v(k) { return esc(S.campos[k] || ''); }
+  function tabMarcar() {
+    if (S.espera) return ecraEspera();
+    var f = S.f, h = '<div class="ph"><div><h1>Marcar <em>psicotécnico</em></h1><p>O cliente recebe o pedido na app MB WAY e só tem de aprovar. Fica tudo tratado: agenda, fatura e emails.</p></div><div style="font-size:24px;font-weight:600">' + precoF() + ' €</div></div>';
+    h += '<div class="card" style="display:flex;flex-direction:column;gap:16px">';
+    h += '<div class="fgrid"><div class="fg"><label>Tipo</label><div class="seg">' + [['obtencao', 'Obtenção · 1h30'], ['renovacao', 'Renovação · 50 min']].map(function (o) { return '<button data-ftipo="' + o[0] + '" class="' + (f.tipo === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+    h += '<div class="fg"><label>Língua</label><div class="seg">' + [['pt', 'Português'], ['en', 'Inglês · 70 €'], ['fr', 'Francês · 70 €']].map(function (o) { return '<button data-flingua="' + o[0] + '" class="' + (f.lingua === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div></div>';
+    if (f.lingua === 'pt') {
+      h += '<label style="display:flex;gap:8px;align-items:center;font-size:13.5px"><input type="checkbox" id="f-formando"' + (f.formando ? ' checked' : '') + '> Formando do Instituto 31 (25 €)</label>';
+      if (f.formando) h += '<div class="fg"><label>Código de formando (opcional)</label><input id="f-codigo" maxlength="13" placeholder="I31-XXXX-XXXX" style="text-transform:uppercase" value="' + v('f-codigo') + '"></div>';
+    }
+    h += '<div class="fg"><label>Dia</label>';
+    if (!S.dias) h += '<p class="muted">A carregar a agenda…</p>';
+    else h += '<div class="dias">' + S.dias.map(function (d, i) { var dt = new Date(d.data + 'T12:00:00'); return '<button type="button" class="dchip' + (f.dia === i ? ' on' : '') + '" data-fdia="' + i + '"' + (d.livres.length ? '' : ' disabled') + '><small>' + DS[dt.getDay()] + '</small><b>' + dt.getDate() + '</b><small>' + MS[dt.getMonth()] + '</small></button>'; }).join('') + '</div>';
+    h += '</div>';
+    if (S.dias && f.dia >= 0 && S.dias[f.dia]) { var d = S.dias[f.dia]; h += '<div class="fg"><label>Hora · ' + esc(dl(d.data)) + '</label><div class="hgrid">' + d.horas.map(function (hr) { return '<button type="button" class="hchip' + (f.hora === hr ? ' on' : '') + '" data-fhora="' + hr + '"' + (d.livres.indexOf(hr) < 0 ? ' disabled' : '') + '>' + hr + '</button>'; }).join('') + '</div></div>'; }
+    h += '<div class="fgrid"><div class="fg full"><label>Nome completo do cliente</label><input id="f-nome" autocomplete="off" value="' + v('f-nome') + '"></div>';
+    h += '<div class="fg"><label>Telemóvel com MB WAY</label><input id="f-tel" type="tel" inputmode="tel" placeholder="9xx xxx xxx" value="' + v('f-tel') + '"></div>';
+    h += '<div class="fg"><label>Email (opcional · confirmação)</label><input id="f-email" type="email" autocomplete="off" value="' + v('f-email') + '"></div>';
+    h += '<div class="fg"><label>NIF (opcional · em branco = consumidor final)</label><input id="f-nif" inputmode="numeric" maxlength="9" value="' + v('f-nif') + '"></div></div>';
+    if (S.msg) h += '<div class="alert ar">' + esc(S.msg) + '</div>';
+    var can = !!f.hora && !S.envio;
+    h += '<div><button class="btn btn-gold" id="enviar" style="padding:12px 20px;font-size:15px"' + (can ? '' : ' disabled') + '>' + (S.envio ? 'A enviar…' : f.hora ? 'Enviar pedido MB WAY · ' + precoF() + ' €' : 'Escolha o dia e a hora') + '</button></div>';
+    return h + '</div>';
+  }
+  function ecraEspera() {
+    var u = S.espera, h = '<div class="card espera">';
+    if (u.estado === 'pago') {
+      h += '<span class="chip cg">✓ Pago</span><h2 style="margin-top:10px">Marcação confirmada</h2><p class="muted" style="margin:8px 0">' + esc(u.nome) + ' · ' + esc(dl(u.data)) + ' às ' + esc(u.hora) + ' · ' + u.valor + ' €</p><p class="muted">Já está no Google Calendar, a fatura ficou em rascunho no TOConline' + (u.email ? ' e o cliente recebeu a confirmação por email' : '') + '.</p><button class="btn btn-gold" id="nova" style="margin-top:14px">Nova marcação</button>';
+    } else if (u.estado === 'expirado' || u.estado === 'recusado') {
+      h += '<span class="chip cr">' + (u.estado === 'recusado' ? 'Recusado' : 'Expirou') + '</span><h2 style="margin-top:10px">O pagamento não foi aprovado</h2><p class="muted" style="margin:8px 0">' + (u.estado === 'recusado' ? 'O cliente recusou ou o MB WAY rejeitou o pedido.' : 'O cliente não aprovou a tempo.') + ' A vaga voltou a ficar livre.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn btn-gold" id="reenviar">Enviar de novo para ' + esc(u.tel) + '</button><button class="btn btn-out" id="editar">Alterar dados ou hora</button></div>';
+    } else {
+      var rest = Math.max(0, Math.round((u.fim - Date.now()) / 1000));
+      var txt = 'Olá ' + u.nome.split(' ')[0] + '! Já está reservado para ' + dl(u.data).toLowerCase() + ' às ' + u.hora + '. Acabámos de lhe enviar um pedido MB WAY de ' + u.valor + ' €: abra a app MB WAY e aprove para confirmar. Instituto 31';
+      h += '<span class="chip co">À espera do cliente</span><h2 style="margin-top:10px">Pedido MB WAY enviado</h2><p class="muted" style="margin-top:6px">' + esc(u.nome) + ' · ' + esc(u.tel) + '<br>' + esc(dl(u.data)) + ' às ' + esc(u.hora) + ' · ' + u.valor + ' €</p><div class="big" id="contador">' + Math.floor(rest / 60) + ':' + ('0' + rest % 60).slice(-2) + '</div><p class="muted">O cliente tem uns 4 minutos para aprovar na app MB WAY. Esta página atualiza sozinha.</p>';
+      h += '<a class="btn btn-sage" style="margin-top:14px" target="_blank" rel="noopener" href="https://wa.me/351' + encodeURIComponent(u.tel) + '?text=' + encodeURIComponent(txt) + '">Avisar o cliente no WhatsApp</a>';
+    }
+    return h + '</div>';
+  }
+  function tabBloq() {
+    var h = '<div class="ph"><div><h1>Bloquear <em>horas</em></h1><p>Folgas, férias ou compromissos. As horas bloqueadas deixam de aparecer no site.</p></div></div>';
+    h += '<div class="card" style="margin-bottom:16px"><div class="card-hd">Novo bloqueio</div><div class="fgrid3"><div class="fg"><label>Dia</label><input type="date" id="b-data" min="' + S.hoje + '"></div><div class="fg"><label>Hora</label><select id="b-hora"><option value="">O dia todo</option>' + ['10:00', '11:00', '12:00', '14:30', '15:30', '16:30'].map(function (x) { return '<option>' + x + '</option>'; }).join('') + '</select></div><div class="fg"><label>Motivo (interno)</label><input id="b-motivo" placeholder="ex.: férias"></div></div><div style="margin-top:12px"><button class="btn btn-gold" id="b-add">Bloquear</button></div></div>';
+    if (!S.bloq) { carregarBloq(); return h + '<p class="muted">A carregar…</p>'; }
+    h += '<div class="card"><div class="card-hd">Bloqueios marcados <small>' + S.bloq.length + '</small></div>';
+    if (!S.bloq.length) h += '<p class="muted">Não há horas bloqueadas.</p>';
+    else h += '<div class="tw"><table><thead><tr><th>Dia</th><th>Hora</th><th>Motivo</th><th></th></tr></thead><tbody>' + S.bloq.map(function (b) { return '<tr><td>' + esc(dl(b.data)) + '</td><td>' + (b.hora ? hhmm(b.hora) : 'Dia todo') + '</td><td>' + esc(b.motivo || '') + '</td><td style="text-align:right"><button class="btn btn-out btn-xs" data-desbloq="' + b.id + '">Retirar</button></td></tr>'; }).join('') + '</tbody></table></div>';
+    return h + '</div>';
+  }
+  function tabCods() {
+    var h = '<div class="ph"><div><h1>Códigos de <em>formando</em></h1><p>Cada formando do Instituto recebe um código para marcar o psicotécnico a 25 € no site. Cada código só pode ser usado uma vez.</p></div></div>';
+    if (!S.cods) { carregarCods(); return h + '<p class="muted">A carregar…</p>'; }
+    var n = { livre: 0, entregue: 0, usado: 0 };
+    S.cods.forEach(function (c) { if (c.estado === 'usado' || c.estado === 'reservado') n.usado++; else if (c.estado === 'livre' && c.entregue_em) n.entregue++; else if (c.estado === 'livre') n.livre++; });
+    h += '<div class="g3" style="margin-bottom:16px"><div class="stat sage"><div class="stat-v">' + n.livre + '</div><div class="stat-l">Por entregar</div></div><div class="stat gold"><div class="stat-v">' + n.entregue + '</div><div class="stat-l">Entregues, por usar</div></div><div class="stat teal"><div class="stat-v">' + n.usado + '</div><div class="stat-l">Usados</div></div></div>';
+    h += '<div style="margin-bottom:12px"><div class="seg">' + [['livre', 'Por entregar'], ['entregue', 'Entregues'], ['usado', 'Usados']].map(function (o) { return '<button data-codf="' + o[0] + '" class="' + (S.codFiltro === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+    var lista = S.cods.filter(function (c) { var used = c.estado === 'usado' || c.estado === 'reservado'; return S.codFiltro === 'usado' ? used : S.codFiltro === 'entregue' ? (!used && c.estado === 'livre' && c.entregue_em) : (c.estado === 'livre' && !c.entregue_em); });
+    if (S.codFiltro === 'livre') lista = lista.slice(0, 30);
+    h += '<div class="card"><div class="tw"><table><thead><tr><th>Código</th><th>Formando</th><th>Turma</th><th>' + (S.codFiltro === 'usado' ? 'Usado em' : 'Entregue em') + '</th><th></th></tr></thead><tbody>';
+    if (!lista.length) h += '<tr><td colspan="5" class="muted">Nada nesta lista.</td></tr>';
+    lista.forEach(function (c) {
+      h += '<tr><td style="font-family:monospace;font-size:13px;color:var(--ink)">' + esc(c.codigo) + '</td><td>' + esc(c.nome || '—') + '</td><td>' + esc(c.turma || '—') + '</td><td>' + (S.codFiltro === 'usado' ? (c.usado_em ? new Date(c.usado_em).toLocaleDateString('pt-PT') : '—') : (c.entregue_em ? new Date(c.entregue_em + 'T12:00:00').toLocaleDateString('pt-PT') : '—')) + '</td><td style="text-align:right">' + (S.codFiltro === 'livre' ? '<button class="btn btn-gold btn-xs" data-entregar="' + c.id + '">Entregar</button>' : '') + '</td></tr>';
+    });
+    h += '</tbody></table></div>' + (S.codFiltro === 'livre' ? '<p class="muted" style="margin-top:10px">A mostrar os primeiros 30 códigos por entregar.</p>' : '') + '</div>';
+    return h;
+  }
+
+  // ───────────── modal
+  function modal(html) { document.getElementById('md').innerHTML = html; document.getElementById('mo').classList.add('open'); }
+  function fecharModal() { document.getElementById('mo').classList.remove('open'); }
+  document.getElementById('mo').addEventListener('click', function (e) { if (e.target.id === 'mo' || e.target.closest('[data-fechar]')) fecharModal(); });
+
+  function verMarcacao(id) {
+    var m = S.marc.find(function (x) { return x.id === id; }); if (!m) return;
+    var linhas = [['Quando', dl(m.data) + ' às ' + hhmm(m.hora)], ['Estado', chipEstado(m)], ['Telemóvel', '<a href="tel:+351' + esc(m.telemovel) + '">' + esc(m.telemovel) + '</a> · <a target="_blank" rel="noopener" href="https://wa.me/351' + esc(m.telemovel) + '">WhatsApp</a>'], ['Email', esc(m.email || '—')], ['NIF', esc(m.nif || '— (consumidor final)')], ['Avaliação', (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + ' · ' + LNG[m.lingua] + (m.formando ? ' · formando' : '')], ['Valor', Number(m.valor) + ' € (MB WAY)'], ['Referência', esc(m.order_id || '')], ['Fatura', esc(m.fatura_estado === 'rascunho' ? 'Rascunho na série WEB do TOConline' : m.fatura_estado === 'emitida' ? 'Emitida' : m.fatura_estado === 'erro' ? 'Erro ao criar — ver TOConline' : '—')], ['Notas', esc(m.obs || '—')]];
+    modal('<div class="md-hd"><div><h2>' + esc(m.nome) + '</h2></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">' + linhas.map(function (l) { return '<div class="info-row"><div class="info-lbl">' + l[0] + '</div><div class="info-val">' + l[1] + '</div></div>'; }).join('') + '</div>');
+  }
+  function pedirCancelar(id) {
+    var m = S.marc.find(function (x) { return x.id === id; }); if (!m) return;
+    modal('<div class="md-hd"><div><h2>Cancelar marcação</h2><p>' + esc(m.nome) + ' · ' + esc(dl(m.data)) + ' às ' + hhmm(m.hora) + '</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body"><div class="alert aw">A vaga volta a ficar livre e o evento sai do Google Calendar. O cliente pagou ' + Number(m.valor) + ' €: se for para devolver, trate da devolução e da nota de crédito no TOConline.</div><div class="fg"><label>Motivo (interno)</label><input id="c-motivo" placeholder="ex.: pediu para remarcar"></div></div><div class="md-foot"><button class="btn btn-out" data-fechar>Voltar</button><button class="btn btn-rose" data-confcancel="' + id + '">Cancelar marcação</button></div>');
+  }
+  function entregarCodigo(id) {
+    var c = S.cods.find(function (x) { return x.id === id; }); if (!c) return;
+    modal('<div class="md-hd"><div><h2>Entregar código ' + esc(c.codigo) + '</h2><p>Registe a quem foi entregue. O formando usa-o na marcação do site.</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body"><div class="fgrid"><div class="fg full"><label>Nome do formando</label><input id="e-nome"></div><div class="fg"><label>Turma</label><input id="e-turma" placeholder="ex.: TVDE dez/2026"></div></div></div><div class="md-foot"><button class="btn btn-out" data-fechar>Voltar</button><button class="btn btn-gold" data-confentregar="' + id + '">Guardar</button></div>');
+  }
+
+  // ───────────── ações
+  function guardarCampos() { ['f-nome', 'f-tel', 'f-email', 'f-nif', 'f-codigo'].forEach(function (k) { var e = document.getElementById(k); if (e) S.campos[k] = e.value; }); }
+  function enviar(dados) {
+    S.envio = true; S.msg = ''; render();
+    fn('marcar', dados).then(function (j) {
+      S.envio = false;
+      if (j._s === 401) { sair(); return; }
+      if (!j.id) { S.msg = j.erro || 'Não foi possível enviar.'; if (j._s === 409) { S.f.hora = ''; carregarAgenda(); } render(); return; }
+      S.espera = { id: j.id, nome: dados.nome, tel: dados.telemovel, data: dados.data, hora: dados.hora, valor: j.valor, email: dados.email, dados: dados, fim: Date.now() + 240000, estado: 'pendente' };
+      render(); poll();
+    }).catch(function () { S.envio = false; S.msg = 'Sem ligação. Tente de novo.'; render(); });
+  }
+  function poll() {
+    clearTimeout(S.timer);
+    if (!S.espera || S.espera.estado !== 'pendente') return;
+    fn('estado', { id: S.espera.id }).then(function (j) {
+      if (!S.espera) return;
+      if (j.estado && j.estado !== 'pendente') { S.espera.estado = j.estado; if (j.estado === 'pago') { S.campos = {}; S.f.hora = ''; carregarAgenda(); } render(); return; }
+      S.timer = setTimeout(poll, 4000);
+    }).catch(function () { S.timer = setTimeout(poll, 6000); });
+  }
+  setInterval(function () { var c = document.getElementById('contador'); if (c && S.espera) { var r = Math.max(0, Math.round((S.espera.fim - Date.now()) / 1000)); c.textContent = Math.floor(r / 60) + ':' + ('0' + r % 60).slice(-2); } }, 1000);
+
+  root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#burger,#atualizar,#b-add');
+    if (!t) return;
+    var d = t.dataset;
+    if (d.pag) { S.pag = d.pag; document.getElementById('sb') && document.getElementById('sb').classList.remove('open'); render(); }
+    else if (d.tab) { if (d.tab !== 'marcar' && S.tab === 'marcar') guardarCampos(); S.tab = d.tab; render(); }
+    else if (d.filtro) { S.filtro = d.filtro; render(); }
+    else if (d.ir) { S.pag = 'psi'; S.tab = d.ir; render(); }
+    else if (d.ftipo) { guardarCampos(); S.f.tipo = d.ftipo; render(); }
+    else if (d.flingua) { guardarCampos(); S.f.lingua = d.flingua; if (d.flingua !== 'pt') S.f.formando = false; render(); }
+    else if (d.fdia) { guardarCampos(); S.f.dia = +d.fdia; S.f.hora = ''; S.msg = ''; render(); }
+    else if (d.fhora) { guardarCampos(); S.f.hora = d.fhora; S.msg = ''; render(); }
+    else if (d.ver) verMarcacao(d.ver);
+    else if (d.cancelar) pedirCancelar(d.cancelar);
+    else if (d.mudar || d.confcancel) {
+      var id = d.id || d.confcancel, novo = d.mudar || 'cancelado', motivo = (document.getElementById('c-motivo') || {}).value || '';
+      t.disabled = true;
+      fn('mudar', { id: id, estado: novo, motivo: motivo }).then(function (j) {
+        fecharModal();
+        if (!j.ok) { toast(j.erro || 'Não foi possível alterar.', 'warn'); return; }
+        toast(novo === 'cancelado' ? (j.google ? 'Cancelada e retirada do Google Calendar.' : 'Cancelada. Retire o evento do Google Calendar à mão.') : novo === 'pago' ? 'Alteração desfeita.' : 'Marcado como ' + novo + '.', j.google === false ? 'warn' : 'ok');
+        carregarAgenda();
+      });
+    }
+    else if (d.desbloq) { sb.from('psi_bloqueios').delete().eq('id', d.desbloq).then(function (r) { if (r.error) toast('Não foi possível retirar.', 'warn'); else { toast('Bloqueio retirado.'); carregarBloq(); carregarAgenda(); } }); }
+    else if (d.codf) { S.codFiltro = d.codf; render(); }
+    else if (d.entregar) entregarCodigo(d.entregar);
+    else if (d.confentregar) {
+      var nome = document.getElementById('e-nome').value.trim(); if (nome.length < 3) { toast('Escreva o nome do formando.', 'warn'); return; }
+      sb.from('codigos_formando').update({ nome: nome, turma: document.getElementById('e-turma').value.trim() || null, entregue_em: S.hoje }).eq('id', d.confentregar).then(function (r) { fecharModal(); if (r.error) toast('Não foi possível guardar.', 'warn'); else { toast('Código registado.'); carregarCods(); } });
+    }
+    else if (t.id === 'b-add') {
+      var bd = document.getElementById('b-data').value, bh = document.getElementById('b-hora').value, bm = document.getElementById('b-motivo').value.trim();
+      if (!bd) { toast('Escolha o dia.', 'warn'); return; }
+      sb.from('psi_bloqueios').insert({ data: bd, hora: bh || null, motivo: bm || null }).then(function (r) { if (r.error) toast('Não foi possível bloquear.', 'warn'); else { toast('Bloqueado.'); carregarBloq(); carregarAgenda(); } });
+    }
+    else if (t.id === 'enviar') {
+      guardarCampos();
+      var c = S.campos, nome2 = (c['f-nome'] || '').trim(), tel = (c['f-tel'] || '').replace(/\D/g, '').replace(/^351(?=9\d{8}$)/, '');
+      if (nome2.length < 3) { S.msg = 'Escreva o nome completo do cliente.'; render(); return; }
+      if (!/^9\d{8}$/.test(tel)) { S.msg = 'O telemóvel tem de ter 9 dígitos e começar por 9.'; render(); return; }
+      enviar({ data: S.dias[S.f.dia].data, hora: S.f.hora, tipo: S.f.tipo, lingua: S.f.lingua, formando: S.f.formando, codigo: (c['f-codigo'] || '').trim(), nome: nome2, telemovel: tel, email: (c['f-email'] || '').trim(), nif: (c['f-nif'] || '').replace(/\D/g, '') });
+    }
+    else if (t.id === 'nova') { S.espera = null; render(); }
+    else if (t.id === 'reenviar') { var dd = S.espera.dados; S.espera = null; enviar(dd); }
+    else if (t.id === 'editar') { var de = S.espera.dados; S.campos = { 'f-nome': de.nome, 'f-tel': de.telemovel, 'f-email': de.email, 'f-nif': de.nif, 'f-codigo': de.codigo }; S.espera = null; S.f.hora = ''; render(); carregarAgenda(); }
+    else if (t.id === 'sair') sair();
+    else if (t.id === 'burger') document.getElementById('sb').classList.toggle('open');
+    else if (t.id === 'atualizar') { carregarAgenda(); toast('Atualizado.', 'info'); }
+  });
+  setInterval(function () { if (S.eu && S.pag !== 'psi' || (S.eu && S.tab === 'agenda')) carregarAgenda(); }, 60000);
+
+  sb.auth.onAuthStateChange(function (ev) { if (ev === 'PASSWORD_RECOVERY') { tipoLink = 'recovery'; ecraLogin('nova'); } });
+  sb.auth.getSession().then(function (r) { entrar(r.data.session); });
+})();
+</script>
+</body>
+</html>
