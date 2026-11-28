@@ -213,11 +213,12 @@
 
   // ───────────── psicotécnicos
   function pagPsi() {
-    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['consultas', 'Consultas'], ['devol', 'Devoluções' + (S.devol && S.devol.length ? ' (' + S.devol.length + ')' : '')], ['bloq', 'Bloquear horas'], ['horario', 'Horário e feriados'], ['cods', 'Códigos de formando']];
+    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['consultas', 'Consultas'], ['renov', 'Renovações'], ['devol', 'Devoluções' + (S.devol && S.devol.length ? ' (' + S.devol.length + ')' : '')], ['bloq', 'Bloquear horas'], ['horario', 'Horário e feriados'], ['cods', 'Códigos de formando']];
     var h = '<div class="perfil-tabs">' + tabs.map(function (t) { return '<div class="ptab' + (S.tab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</div>'; }).join('') + '</div>';
     if (S.tab === 'agenda') h += tabAgenda();
     else if (S.tab === 'marcar') h += tabMarcar();
     else if (S.tab === 'consultas') h += tabConsultas();
+    else if (S.tab === 'renov') h += tabRenov();
     else if (S.tab === 'bloq') h += tabBloq();
     else if (S.tab === 'devol') h += tabDevol();
     else if (S.tab === 'horario') h += tabHorario();
@@ -369,6 +370,39 @@
     }).catch(function () { toast('Não foi possível abrir a ficha.', 'warn'); });
   }
 
+
+  /* ---------- renovações: cartas a caducar ---------- */
+  function addDiasISO(iso, n) { var d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function carregarRenov() {
+    var de = addDiasISO(S.hoje, -30), ate = addDiasISO(S.hoje, S.renovJanela || 120);
+    sb.from('pessoas').select('id,nome,tel,email,carta_vg1,carta_vg2,carta_cats,data_ultima_psi,obs_interna')
+      .or('and(carta_vg1.gte.' + de + ',carta_vg1.lte.' + ate + '),and(carta_vg2.gte.' + de + ',carta_vg2.lte.' + ate + ')').limit(400)
+      .then(function (r) {
+        var L = [];
+        (r.data || []).forEach(function (p) {
+          [['1', p.carta_vg1], ['2', p.carta_vg2]].forEach(function (g) { if (g[1] && g[1] >= de && g[1] <= ate) L.push({ p: p, g: g[0], d: g[1] }); });
+        });
+        L.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });
+        S.renov = L; render();
+      });
+  }
+  function msgRenov(x) {
+    var n = String(x.p.nome || '').split(' ')[0], d = x.d.split('-').reverse().join('/');
+    return 'Olá ' + n + ', fala o Instituto 31. A validade da sua carta de condução (Grupo ' + x.g + ') ' + (x.d < S.hoje ? 'terminou a ' : 'termina a ') + d + '. Se precisar da avaliação psicológica (psicotécnico) para a renovação, pode marcar aqui: https://instituto31.pt/Psicotecnicos.html?tipo=renovacao ou responder a esta mensagem. Obrigado!';
+  }
+  function tabRenov() {
+    var h = '<div class="ph"><div><h1>Cartas a <em>renovar</em></h1><p>Pessoas da base com a carta a caducar. Contacte uma a uma por WhatsApp ou email: a mensagem já vai escrita.</p></div><div class="ph-acts"><div class="seg">' + [[60, '60 dias'], [120, '4 meses'], [180, '6 meses']].map(function (o) { return '<button data-rjan="' + o[0] + '" class="' + ((S.renovJanela || 120) === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div></div>';
+    if (!S.renov) { carregarRenov(); return h + '<p class="muted">A carregar…</p>'; }
+    if (!S.renov.length) return h + '<div class="card"><p class="muted">Ninguém com a carta a caducar neste período.</p></div>';
+    return h + '<div class="card" style="padding:0">' + S.renov.map(function (x, i) {
+      var p = x.p, venc = x.d < S.hoje, tel = String(p.tel || '').replace(/\D/g, '').replace(/^351/, ''), feito = /Renovação avisada/.test(p.obs_interna || '');
+      var a = '';
+      if (/^9\d{8}$/.test(tel)) a += '<a class="btn btn-sage btn-xs" target="_blank" rel="noopener" data-rcont="' + i + '" href="https://wa.me/351' + tel + '?text=' + encodeURIComponent(msgRenov(x)) + '">WhatsApp</a>';
+      if (p.email) a += '<a class="btn btn-out btn-xs" data-rcont="' + i + '" href="mailto:' + esc(p.email) + '?subject=' + encodeURIComponent('Renovação da carta de condução') + '&body=' + encodeURIComponent(msgRenov(x)) + '">Email</a>';
+      if (!a) a = '<span class="muted" style="font-size:12px">sem contacto</span>';
+      return '<div class="slot"><div class="slot-bar" style="background:' + (venc ? 'var(--rose)' : 'var(--gold)') + ';align-self:stretch"></div><div><div class="slot-h" style="font-size:13px">' + x.d.split('-').reverse().join('/') + '</div></div><div class="slot-body"><div class="slot-title">' + esc(p.nome) + ' <span class="chip ' + (venc ? 'cr' : 'co') + '">Grupo ' + x.g + (venc ? ' · caducada' : '') + '</span>' + (feito ? ' <span class="chip cg">avisado</span>' : '') + '</div><div class="slot-sub">' + esc(p.carta_cats || '') + (p.data_ultima_psi ? ' · último psicotécnico ' + p.data_ultima_psi.split('-').reverse().join('/') : '') + '</div></div><div class="slot-acts">' + a + '</div></div>';
+    }).join('') + '</div><p class="muted" style="font-size:12px;margin-top:8px">Ao carregar em WhatsApp ou Email, a pessoa fica marcada como «avisado» na ficha.</p>';
+  }
   function tabConsultas() {
     var h = '<div class="ph"><div><h1>Consultas <em>realizadas</em></h1><p>Todas as consultas registadas, de qualquer data. Abra uma para emitir de novo o relatório, o certificado ou a 2.ª via.</p></div><div class="ph-acts"><button class="btn btn-gold btn-sm" data-cantiga="1">+ Consulta antiga</button></div></div>';
     h += '<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px"><input id="cq" class="fg" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);padding:8px 11px" placeholder="Procurar por nome ou NIF" value="' + esc(S.cq || '') + '"><button class="btn btn-out btn-sm" data-cbusca="1">Procurar</button>' + (S.cq ? '<button class="btn btn-out btn-sm" data-climpa="1">Limpar</button>' : '') + '</div></div>';
@@ -545,9 +579,11 @@
 
   root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
+    var t = e.target.closest('[data-rjan],[data-rcont],[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
     if (!t) return;
     var d = t.dataset;
+    if (d.rjan) { S.renovJanela = +d.rjan; S.renov = null; render(); return; }
+    if (d.rcont) { var xr = S.renov[+d.rcont]; if (xr) { var nota = (xr.p.obs_interna ? xr.p.obs_interna + ' · ' : '') + 'Renovação avisada ' + S.hoje.split('-').reverse().join('/') + ' (Grupo ' + xr.g + ')'; xr.p.obs_interna = nota; sb.from('pessoas').update({ obs_interna: nota }).eq('id', xr.p.id).then(function () { render(); }); } return; }
     if (d.cantiga) { consultaAntiga(); return; }
     if (d.cabrir) { abrirConsulta(d.cabrir); return; }
     if (d.cbusca) { S.cq = (document.getElementById('cq') || {}).value || ''; S.consultas = null; render(); return; }
