@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
       const dias = await agenda(sb);
       const hoje = agoraLisboa().data;
       const { data: ms } = await sb.from("marcacoes_psi")
-        .select("id,data,hora,nome,telemovel,email,nif,estado,tipo,lingua,formando,valor,obs,order_id,fatura_estado,metodo_pag,remarcacoes,justificacao,devolucao_estado")
+        .select("id,data,hora,nome,telemovel,email,nif,estado,tipo,lingua,formando,valor,obs,order_id,fatura_estado,metodo_pag,remarcacoes,justificacao,justificacao_ficheiro,devolucao_estado")
         .in("estado", ["pendente", "pago", "realizado", "faltou"]).gte("data", addDias(hoje, membro ? -14 : 0)).lte("data", addDias(hoje, 21))
         .order("data").order("hora");
       return json(req, { dias, marcacoes: ms ?? [], hoje, eu: membro });
@@ -226,6 +226,10 @@ Deno.serve(async (req) => {
       if (error) return json(req, { erro: "Essa hora acabou de ficar ocupada. Escolha outra." }, 409);
       await apagarEventoGoogle(m.id, m.data);
       const google = await eventoGoogle({ ...m, data: b.data, hora: b.hora });
+      // o rascunho da fatura tem a data na descrição: refaz-se com a data nova
+      if (m.fatura_estado === "rascunho" && m.toc_doc_id) {
+        try { if (await apagarRascunho(sb, m)) await emitirFatura(sb, { ...m, data: b.data, hora: b.hora, toc_doc_id: null, fatura_estado: null }); } catch (_) { /* fica registado em fatura_erro */ }
+      }
       if (m.email && b.avisar !== false) {
         const c = emailConfirmacao({ ...m, data: b.data, hora: b.hora });
         await enviarEmail(sb, m.email, m.nome, c.assunto.replace(/^Psicotécnico marcado/, "Psicotécnico remarcado"), c.html, "psi_remarcacao");
