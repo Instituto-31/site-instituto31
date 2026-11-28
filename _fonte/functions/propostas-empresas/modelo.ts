@@ -6,7 +6,8 @@ function ponto(n: number, t: string, txt: string) {
   return `<tr><td width="40" valign="top" style="padding:0 0 16px"><div style="width:28px;height:28px;border-radius:999px;background:#E8F2FB;color:${AZUL};font-size:14px;font-weight:bold;line-height:28px;text-align:center">${n}</div></td>
 <td valign="top" style="padding:3px 0 16px;font-size:15px;line-height:22px;color:${TINTA}"><b>${t}</b><br><span style="color:${CINZA}">${txt}</span></td></tr>`;
 }
-export function emailEmpresa(empresa: string, sair: string, clienteAntigo = false, perto = true) {
+export function emailEmpresa(empresa: string, sair: string, clienteAntigo = false, perto = true, passageiros = false) {
+  const online = passageiros ? "CAM e TCC" : "CAM";
   const emp = e(empresa);
   const titulo = "Nós tratamos dos prazos dos seus motoristas";
   const assunto = clienteAntigo ? `${empresa}: voltamos a tratar da formação dos seus motoristas?` : `${empresa}: formação dos motoristas sem preocupações com prazos`;
@@ -20,7 +21,7 @@ export function emailEmpresa(empresa: string, sair: string, clienteAntigo = fals
 <p style="margin:0 0 22px;font-size:16px;line-height:25px;color:${TINTA}">${abertura}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 8px">
 ${ponto(1, "Controlamos as validades", "Envia-nos a lista de motoristas. Avisamos a empresa e o motorista 120, 60 e 15 dias antes de caducar o CAM, ADR, TCC ou a carta.")}
-${perto ? ponto(2, "Turmas à medida da sua empresa", "Formação contínua (CAM, ADR, TCC, TVDE, Táxi) ao sábado ou nas suas instalações, com datas e horários ajustados aos seus motoristas. A formação contínua CAM também pode ser feita 100% online.") : ponto(2, "CAM contínua 100% online", "Os seus motoristas fazem a formação contínua CAM à distância, a partir de qualquer ponto do país, com datas e horários ajustados à disponibilidade da empresa.")}
+${perto ? ponto(2, "Turmas à medida da sua empresa", `Formação contínua (CAM, ADR, TCC, TVDE, Táxi) ao sábado ou nas suas instalações, com datas e horários ajustados aos seus motoristas. A formação contínua ${online} também pode ser feita 100% online.`) : ponto(2, passageiros ? "CAM e TCC 100% online" : "CAM contínua 100% online", `Os seus motoristas fazem a formação contínua ${online} à distância, a partir de qualquer ponto do país, com datas e horários ajustados à disponibilidade da empresa.`)}
 ${ponto(3, "Pode ser paga com o Cheque-Formação ou com o FCT", "Como entidade certificada pela DGERT, aceitamos o Cheque-Formação do IEFP e ajudamos na candidatura. Se a empresa tem saldo no Fundo de Compensação do Trabalho, pode usá-lo para pagar a formação, <b>só até 31 de dezembro de 2026</b>.")}
 ${perto ? ponto(4, "Psicotécnicos sem esperas", "Avaliação psicológica para a renovação da carta, marcada online, com o relatório entregue na hora, em Guimarães.") : ""}
 </table>
