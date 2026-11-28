@@ -663,27 +663,38 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
   function abrirTurma() { S.turma = { tipo: 'cam', curso: '', data: S.hoje, pessoas: [], busca: null, q: '' }; desenharTurma(); }
   function lerTurma() { var t = S.turma; ['tipo', 'curso', 'data'].forEach(function (k) { var e = document.getElementById('t-' + k); if (e) t[k] = e.value.trim(); }); var q = document.getElementById('t-q'); if (q) t.q = q.value; }
   function desenharTurma() {
-    var t = S.turma;
-    var h = '<div class="md-hd"><div><h2>Registar turma concluída</h2><p class="muted" style="margin:2px 0 0">Junte só os formandos <b>com aproveitamento</b>: cada um recebe o certificado (válido 5 anos), o aviso de renovação e, no dia seguinte, o email a pedir avaliação.</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">';
+    var t = S.turma, nOk = t.pessoas.filter(function (p) { return p.ok !== false; }).length, nNao = t.pessoas.length - nOk;
+    var h = '<div class="md-hd"><div><h2>Registar turma concluída</h2><p class="muted" style="margin:2px 0 0">Junte todos os formandos da turma e tire o visto a quem não teve aproveitamento. Só quem tem o visto recebe o certificado (válido 5 anos), o aviso de renovação e o email a pedir avaliação.</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">';
     h += '<div class="fgrid"><div class="fg"><label>Formação</label><select id="t-tipo">' + CERTS.map(function (c) { return '<option value="' + c[0] + '"' + (t.tipo === c[0] ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select></div>'
       + '<div class="fg"><label>Data de conclusão</label><input id="t-data" type="date" max="' + S.hoje + '" value="' + esc(t.data) + '"></div>'
       + '<div class="fg" style="grid-column:1/-1"><label>Curso (como aparece no certificado)</label><input id="t-curso" placeholder="ex.: CAM mercadorias · formação contínua" value="' + esc(t.curso) + '"></div></div>';
-    h += '<h3 style="margin:16px 0 8px;font-size:14px">Formandos com aproveitamento (' + t.pessoas.length + ')</h3>';
-    h += t.pessoas.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + t.pessoas.map(function (p) { return '<span class="chip co">' + esc(p.nome) + ' <a href="#" data-ttira="' + p.id + '" style="margin-left:4px;text-decoration:none">✕</a></span>'; }).join('') + '</div>' : '<p class="muted" style="margin:0 0 10px">Ainda nenhum. Procure abaixo e carregue no nome para acrescentar.</p>';
+    h += '<h3 style="margin:16px 0 8px;font-size:14px">Formandos (' + t.pessoas.length + ')</h3>';
+    h += t.pessoas.length ? '<div style="border:1px solid var(--border);border-radius:var(--r2);margin-bottom:10px">' + t.pessoas.map(function (p, i) { var ok = p.ok !== false; return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px' + (i ? ';border-top:1px solid var(--border)' : '') + '"><label style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;font-size:13.5px"><input type="checkbox" data-tok="' + p.id + '"' + (ok ? ' checked' : '') + ' style="width:18px;height:18px"><span' + (ok ? '' : ' style="color:var(--muted);text-decoration:line-through"') + '>' + esc(p.nome) + '</span></label><span class="chip ' + (ok ? 'cg' : 'cr') + '">' + (ok ? 'com aproveitamento' : 'sem aproveitamento') + '</span><a href="#" data-ttira="' + p.id + '" title="Tirar da lista" style="text-decoration:none;color:var(--muted)">✕</a></div>'; }).join('') + '</div>' : '<p class="muted" style="margin:0 0 10px">Ainda nenhum. Procure abaixo e carregue no nome para acrescentar.</p>';
     h += '<div style="display:flex;gap:8px"><input id="t-q" placeholder="Nome ou NIF" value="' + esc(t.q) + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);padding:8px 11px"><button class="btn btn-out btn-sm" data-tbusca="1">Procurar</button></div>';
     if (t.busca) h += '<div style="margin-top:6px">' + (t.busca.length ? t.busca.map(function (p) { var ja = t.pessoas.some(function (x) { return x.id === p.id; }); return '<button class="btn btn-out btn-xs" style="margin:2px"' + (ja ? ' disabled' : '') + ' data-tpoe="' + p.id + '">' + esc(p.nome) + (p.nif ? ' · ' + esc(p.nif) : '') + '</button>'; }).join('') : '<span class="muted">Nenhuma ficha encontrada.</span>') + '</div>';
-    h += '<div style="margin-top:18px"><button class="btn btn-gold btn-sm" data-tguardar="1"' + (t.pessoas.length ? '' : ' disabled') + '>Guardar ' + t.pessoas.length + ' certificado' + (t.pessoas.length === 1 ? '' : 's') + '</button></div></div>';
+    h += '<div style="margin-top:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" data-tguardar="1"' + (t.pessoas.length ? '' : ' disabled') + '>Guardar turma</button><span class="muted" style="font-size:12.5px">' + nOk + ' com aproveitamento' + (nNao ? ' · ' + nNao + ' sem' : '') + '</span></div></div>';
     modal(h);
   }
   function guardarTurma(btn) {
     lerTurma(); var t = S.turma;
     if (!t.data) { toast('Falta a data de conclusão.', 'warn'); return; }
     btn.disabled = true;
-    var linhas = t.pessoas.map(function (p) { return { pessoa_id: p.id, tipo: t.tipo, curso: t.curso || CERTS.find(function (c) { return c[0] === t.tipo; })[1], concluido_em: t.data, aproximado: false, origem: 'gestao' }; });
-    sb.from('certificados').upsert(linhas, { onConflict: 'pessoa_id,tipo,concluido_em' }).then(function (r) {
-      if (r.error) { btn.disabled = false; toast('Não foi possível guardar: ' + r.error.message, 'warn'); return; }
-      fecharModal(); toast(linhas.length + ' certificado' + (linhas.length === 1 ? '' : 's') + ' registado' + (linhas.length === 1 ? '' : 's') + '.'); S.renov = null; render();
-    });
+    var curso = t.curso || CERTS.find(function (c) { return c[0] === t.tipo; })[1], dtxt = t.data.split('-').reverse().join('/');
+    var ok = t.pessoas.filter(function (p) { return p.ok !== false; }), nao = t.pessoas.filter(function (p) { return p.ok === false; });
+    var linhas = ok.map(function (p) { return { pessoa_id: p.id, tipo: t.tipo, curso: curso, concluido_em: t.data, aproximado: false, origem: 'gestao' }; });
+    var pc = linhas.length ? sb.from('certificados').upsert(linhas, { onConflict: 'pessoa_id,tipo,concluido_em' }) : Promise.resolve({ error: null });
+    Promise.resolve(pc).then(function (r) {
+      if (r.error) throw r.error;
+      // quem não teve aproveitamento fica anotado na ficha
+      return Promise.all(nao.map(function (p) {
+        return sb.from('pessoas').select('obs_interna').eq('id', p.id).single().then(function (x) {
+          var nota = ((x.data && x.data.obs_interna) ? x.data.obs_interna + '\n' : '') + 'Sem aproveitamento: ' + curso + ' (' + dtxt + ')';
+          return sb.from('pessoas').update({ obs_interna: nota }).eq('id', p.id);
+        });
+      }));
+    }).then(function () {
+      fecharModal(); toast(linhas.length + ' com aproveitamento' + (nao.length ? ', ' + nao.length + ' sem (anotado na ficha)' : '') + '.'); S.renov = null; render();
+    }).catch(function (er) { btn.disabled = false; toast('Não foi possível guardar: ' + (er.message || er), 'warn'); });
   }
   function tabConsultas() {
     var h = '<div class="ph"><div><h1>Consultas <em>realizadas</em></h1><p>Todas as consultas registadas, de qualquer data. Abra uma para emitir de novo o relatório, o certificado ou a 2.ª via.</p></div><div class="ph-acts"><button class="btn btn-gold btn-sm" data-cantiga="1">+ Consulta antiga</button></div></div>';
@@ -879,7 +890,7 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
 
   root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-rtipo],[data-rturma],[data-tbusca],[data-tpoe],[data-ttira],[data-tguardar],[data-fcert],[data-rjan],[data-rcont],[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
+    var t = e.target.closest('[data-tok],[data-rtipo],[data-rturma],[data-tbusca],[data-tpoe],[data-ttira],[data-tguardar],[data-fcert],[data-rjan],[data-rcont],[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
     if (!t) return;
     var d = t.dataset;
     if (d.rjan) { S.renovJanela = +d.rjan; S.renov = null; render(); return; }
@@ -888,6 +899,7 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
     if (d.tbusca) { lerTurma(); var tq = (S.turma.q || '').trim(); if (tq.length < 3) { toast('Escreva pelo menos 3 letras.', 'warn'); return; } var tqq = sb.from('pessoas').select('id,nome,nif').limit(10); (/^\d{6,}$/.test(tq) ? tqq.eq('nif', tq) : tqq.ilike('nome', '%' + tq.replace(/[%_]/g, '') + '%')).then(function (r) { S.turma.busca = r.data || []; desenharTurma(); }); return; }
     if (d.tpoe) { lerTurma(); var tp = (S.turma.busca || []).find(function (p) { return p.id === d.tpoe; }); if (tp) { S.turma.pessoas.push(tp); S.turma.q = ''; S.turma.busca = null; } desenharTurma(); return; }
     if (d.ttira) { e.preventDefault(); lerTurma(); S.turma.pessoas = S.turma.pessoas.filter(function (p) { return p.id !== d.ttira; }); desenharTurma(); return; }
+    if (d.tok) { lerTurma(); var po = S.turma.pessoas.find(function (p) { return p.id === d.tok; }); if (po) po.ok = t.checked; desenharTurma(); return; }
     if (d.tguardar) { guardarTurma(t); return; }
     if (d.fcert) { guardarCertFicha(t); return; }
     if (d.rcont) { var xr = S.renov[+d.rcont]; if (xr) { var nota = (xr.p.obs_interna ? xr.p.obs_interna + ' · ' : '') + 'Renovação avisada ' + S.hoje.split('-').reverse().join('/') + ' (' + etiquetaRenov(xr) + ')'; xr.p.obs_interna = nota; sb.from('pessoas').update({ obs_interna: nota }).eq('id', xr.p.id).then(function () { render(); }); } return; }
