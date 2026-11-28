@@ -59,9 +59,9 @@
   var SB_URL = 'https://dzccpluaszhcroehktrg.supabase.co';
   var SB_KEY = 'sb_publishable_u_-22i34glAsls2-rS51YQ_uynfE2w8';
   var FN = SB_URL + '/functions/v1';
+  var tipoLink = (location.hash.match(/type=([a-z_]+)/) || [])[1] || '';
   var sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: 'implicit' } });
   var root = document.getElementById('root');
-  var tipoLink = (location.hash.match(/type=([a-z]+)/) || [])[1] || '';
 
   var DS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'], MS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   var DL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -138,10 +138,10 @@
         var p1 = document.getElementById('l-p1').value, p2 = document.getElementById('l-p2').value;
         if (p1.length < 8) return ecraLogin('nova', 'Use pelo menos 8 caracteres.');
         if (p1 !== p2) return ecraLogin('nova', 'As duas palavras-passe não são iguais.');
-        sb.auth.updateUser({ password: p1 }).then(function (r) {
+        sb.auth.updateUser({ password: p1, data: { pwd_definida: true } }).then(function (r) {
           if (r.error) return ecraLogin('nova', 'Não foi possível guardar: ' + r.error.message);
           tipoLink = ''; history.replaceState(null, '', location.pathname);
-          sb.auth.getSession().then(function (x) { entrar(x.data.session); });
+          var nu = r.data && r.data.user; sb.auth.getSession().then(function (x) { var se = x.data.session; if (se && nu) se = Object.assign({}, se, { user: nu }); entrar(se); });
         });
       }
     });
@@ -150,7 +150,8 @@
   }
   function entrar(sess) {
     if (!sess) return ecraLogin('entrar');
-    if (tipoLink === 'invite' || tipoLink === 'recovery') return ecraLogin('nova');
+    var md = (sess.user && sess.user.user_metadata) || {};
+    if (tipoLink === 'invite' || tipoLink === 'recovery' || !md.pwd_definida) return ecraLogin('nova');
     S.user = sess.user;
     sb.from('equipa').select('nome,perfil,ativo').maybeSingle().then(function (r) {
       if (!r.data || !r.data.ativo) { sb.auth.signOut(); return ecraLogin('entrar', 'Esta conta não pertence à equipa do Instituto 31.'); }
@@ -180,7 +181,7 @@
         h += '<div class="nav-i' + (S.pag === it[0] ? ' on' : '') + (on ? '' : ' off') + '"' + (on ? ' data-pag="' + it[0] + '"' : '') + '><span class="nav-ico">' + it[1] + '</span>' + it[2] + (on ? badge : '<span class="soon">em breve</span>') + '</div>';
       });
     });
-    h += '</nav><div class="sb-user"><div class="sb-av">' + esc(ini) + '</div><div style="flex:1"><div class="sb-nm">' + esc(S.eu.nome) + '</div><div class="sb-rl">' + esc(S.eu.perfil === 'secretaria' ? 'Secretaria' : 'Administração') + '</div></div><button class="link" id="sair" style="color:rgba(255,255,255,.5)">Sair</button></div></aside>';
+    h += '</nav><div class="sb-user"><div class="sb-av">' + esc(ini) + '</div><div style="flex:1"><div class="sb-nm">' + esc(S.eu.nome) + '</div><div class="sb-rl">' + esc(S.eu.perfil === 'secretaria' ? 'Secretaria' : 'Administração') + '</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px"><button class="link" id="sair" style="color:rgba(255,255,255,.5)">Sair</button><button class="link" id="mudarpass" style="color:rgba(255,255,255,.35);font-size:10.5px">Palavra-passe</button></div></div></aside>';
     h += '<div class="main"><div class="topbar"><button class="burger" id="burger" aria-label="Menu">☰</button><div class="tb-title">' + (S.pag === 'psi' ? 'Psicotécnicos' : 'Painel') + '</div></div><div class="content">';
     h += S.pag === 'psi' ? pagPsi() : pagPainel();
     h += '</div></div></div>';
@@ -349,7 +350,7 @@
 
   root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#burger,#atualizar,#b-add');
+    var t = e.target.closest('[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
     if (!t) return;
     var d = t.dataset;
     if (d.pag) { S.pag = d.pag; document.getElementById('sb') && document.getElementById('sb').classList.remove('open'); render(); }
@@ -395,6 +396,7 @@
     else if (t.id === 'reenviar') { var dd = S.espera.dados; S.espera = null; enviar(dd); }
     else if (t.id === 'editar') { var de = S.espera.dados; S.campos = { 'f-nome': de.nome, 'f-tel': de.telemovel, 'f-email': de.email, 'f-nif': de.nif, 'f-codigo': de.codigo }; S.espera = null; S.f.hora = ''; render(); carregarAgenda(); }
     else if (t.id === 'sair') sair();
+    else if (t.id === 'mudarpass') ecraLogin('nova');
     else if (t.id === 'burger') document.getElementById('sb').classList.toggle('open');
     else if (t.id === 'atualizar') { carregarAgenda(); toast('Atualizado.', 'info'); }
   });
