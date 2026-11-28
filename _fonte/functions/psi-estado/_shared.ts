@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+// Chave de serviço: a nova (sb_secret) e, enquanto existir, a antiga como reserva.
+const chaveServico = (): string => { try { const k = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}").default; if (k) return k; } catch { /* sem chaves novas */ } return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!; };
 import { convite, criarEventoGoogle, localToUtc } from "./_gcal.ts";
 import { emailConfirmacao, emailEquipa, moldura as molduraNova } from "./_email.ts";
 import { emitirFatura } from "./_fatura.ts";
@@ -12,7 +14,7 @@ export function cors(req: Request) {
 export function json(req: Request, body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors(req), "Content-Type": "application/json" } });
 }
-export const db = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+export const db = () => createClient(Deno.env.get("SUPABASE_URL")!, chaveServico(), { auth: { persistSession: false } });
 export const SLOT_MIN = 60;
 export function slotUtc(data: string, hora: string) { const [y, m, d] = data.split("-").map(Number); const [h, mi] = hora.split(":").map(Number); return localToUtc(y, m, d, h, mi); }
 

@@ -1,9 +1,11 @@
 // Lembrete por email na véspera do psicotécnico (corre todos os dias às 18h, pelo pg_cron).
 // Só envia uma vez por marcação (coluna lembrete_em).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+// Chave de serviço: a nova (sb_secret) e, enquanto existir, a antiga como reserva.
+const chaveServico = (): string => { try { const k = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}").default; if (k) return k; } catch { /* sem chaves novas */ } return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!; };
 import { dataLonga, moldura } from "./_email.ts";
 
-const db = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+const db = () => createClient(Deno.env.get("SUPABASE_URL")!, chaveServico(), { auth: { persistSession: false } });
 const e = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 function amanhaLisboa() {
   const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());

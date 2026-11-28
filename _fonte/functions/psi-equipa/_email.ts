@@ -81,8 +81,9 @@ export function emailEquipa(m: any) {
   const hora = String(m.hora).slice(0, 5);
   const quando = dataLonga(m.data, "pt");
   const LNG: Record<string, string> = { pt: "Português", en: "English", fr: "Français" };
+  const porEquipa = (/Marcado por ([^(·]+?)\s*[(·]/.exec(String(m.obs ?? "")) || [])[1] || "";
   const corpo = `
-<p style="margin:0 0 14px"><span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#E7F6EC;color:#1E7B3A;font-size:13px;font-weight:bold">● Pago pelo site</span></p>
+<p style="margin:0 0 14px"><span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#E7F6EC;color:#1E7B3A;font-size:13px;font-weight:bold">● ${porEquipa ? "Pago · marcado por " + e(porEquipa) : "Pago pelo site"}</span></p>
 <h1 style="margin:0 0 18px;font-size:24px;line-height:30px;font-weight:bold">${e(m.nome)}</h1>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 6px">
 ${linha("Quando", `${e(quando)} · ${hora}`)}
@@ -96,5 +97,5 @@ ${m.formando ? linha("Código de formando", e(m.codigo ?? "")) : ""}
 ${linha("Referência", e(m.order_id ?? ""))}
 </table>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;background:#FFF6E0;border-radius:12px"><tr><td style="padding:14px 16px;font-size:14px;line-height:20px;color:#6B4E00"><b>A fazer:</b> rever e finalizar a fatura-recibo em rascunho no TOConline (Vendas → Faturas, série WEB). A marcação já está na agenda "Psicotécnicos".</td></tr></table>`;
-  return { assunto: `Nova marcação paga · ${e(m.nome)} · ${quando} ${hora}`, html: moldura("Nova marcação paga", corpo, `${m.nome} · ${quando} ${hora}`) };
+  return { assunto: `${porEquipa ? "Marcação confirmada (equipa)" : "Nova marcação paga"} · ${e(m.nome)} · ${quando} ${hora}`, html: moldura("Nova marcação paga", corpo, `${m.nome} · ${quando} ${hora}`) };
 }
