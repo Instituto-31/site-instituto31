@@ -36,6 +36,7 @@
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--ink)}
 .login{background:var(--card);border-radius:14px;padding:28px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px}
 .login .logo-name{color:var(--ink);font-size:22px}
+.md-body .alert{display:block}
 .err{color:var(--rose);font-size:13px;font-weight:500}
 .muted{color:var(--ink3);font-size:12.5px}
 .link{background:none;border:none;color:var(--teal);cursor:pointer;font-family:'Outfit',sans-serif;font-size:12.5px;padding:0;text-decoration:underline}
@@ -74,7 +75,7 @@
 
   var S = { user: null, eu: null, pag: 'painel', tab: 'agenda', filtro: 'hoje', dias: null, marc: [], hoje: hojeISO(),
     f: { tipo: 'obtencao', lingua: 'pt', formando: false, dia: -1, hora: '' }, campos: {}, envio: false, msg: '', espera: null, timer: null,
-    bloq: null, cods: null, codFiltro: 'livre' };
+    bloq: null, cods: null, codFiltro: 'livre', devol: null, hor: null, fer: null, metodo: 'mbway', remarc: null };
 
   // ───────────── chamadas
   function fn(acao, extra) {
@@ -96,6 +97,11 @@
   }
   function carregarBloq() {
     sb.from('psi_bloqueios').select('id,data,hora,motivo').gte('data', S.hoje).order('data').order('hora').then(function (r) { S.bloq = r.data || []; render(); });
+  }
+  function carregarDevol() { fn('devolucoes').then(function (j) { S.devol = j.lista || []; render(); }); }
+  function carregarHorario() {
+    sb.from('psi_horarios').select('id,dia_semana,hora,ativo').order('hora').then(function (r) { S.hor = r.data || []; render(); });
+    sb.from('feriados').select('*').gte('data', S.hoje).order('data').then(function (r) { S.fer = r.data || []; render(); });
   }
   function carregarCods() {
     sb.from('codigos_formando').select('id,codigo,nome,turma,estado,entregue_em,usado_em,validade').order('codigo').then(function (r) { S.cods = r.data || []; render(); });
@@ -206,11 +212,13 @@
 
   // ───────────── psicotécnicos
   function pagPsi() {
-    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['bloq', 'Bloquear horas'], ['cods', 'Códigos de formando']];
+    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['devol', 'Devoluções' + (S.devol && S.devol.length ? ' (' + S.devol.length + ')' : '')], ['bloq', 'Bloquear horas'], ['horario', 'Horário e feriados'], ['cods', 'Códigos de formando']];
     var h = '<div class="perfil-tabs">' + tabs.map(function (t) { return '<div class="ptab' + (S.tab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</div>'; }).join('') + '</div>';
     if (S.tab === 'agenda') h += tabAgenda();
     else if (S.tab === 'marcar') h += tabMarcar();
     else if (S.tab === 'bloq') h += tabBloq();
+    else if (S.tab === 'devol') h += tabDevol();
+    else if (S.tab === 'horario') h += tabHorario();
     else h += tabCods();
     return h;
   }
@@ -220,9 +228,10 @@
   }
   function slot(m) {
     var cor = { pago: 'var(--gold)', pendente: 'var(--ink3)', realizado: 'var(--sage)', faltou: 'var(--rose)' }[m.estado] || 'var(--ink3)';
-    var sub = esc(m.telemovel) + ' · ' + (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + (m.lingua !== 'pt' ? ' · ' + LNG[m.lingua] : '') + (m.formando ? ' · formando' : '') + ' · ' + Number(m.valor) + ' €' + (/equipa|WhatsApp/i.test(m.obs || '') ? ' · pela equipa' : ' · pelo site');
+    var sub = esc(m.telemovel) + ' · ' + (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + (m.lingua !== 'pt' ? ' · ' + LNG[m.lingua] : '') + (m.formando ? ' · formando' : '') + ' · ' + Number(m.valor) + ' €' + (m.metodo_pag && m.metodo_pag !== 'mbway' ? ' · pago no local' : /equipa|WhatsApp|Marcado por/i.test(m.obs || '') ? ' · pela equipa' : ' · pelo site') + (m.remarcacoes ? ' · remarcada' : '');
     var a = '';
     if (m.estado === 'pago' && m.data <= S.hoje) a += '<button class="btn btn-sage btn-xs" data-mudar="realizado" data-id="' + m.id + '">Realizado</button><button class="btn btn-out btn-xs" data-mudar="faltou" data-id="' + m.id + '">Faltou</button>';
+    if (m.estado === 'pago' || m.estado === 'faltou') a += '<button class="btn btn-out btn-xs" data-remarcar="' + m.id + '">Remarcar</button>';
     if (m.estado === 'pago') a += '<button class="btn btn-out btn-xs" data-cancelar="' + m.id + '">Cancelar</button>';
     if (m.estado === 'realizado' || m.estado === 'faltou') a += '<button class="btn btn-out btn-xs" data-mudar="pago" data-id="' + m.id + '">Desfazer</button>';
     return '<div class="slot"><div class="slot-bar" style="background:' + cor + ';align-self:stretch"></div><div><div class="slot-h">' + hhmm(m.hora) + '</div></div><div class="slot-body" style="cursor:pointer" data-ver="' + m.id + '"><div class="slot-title">' + esc(m.nome) + ' ' + chipEstado(m) + '</div><div class="slot-sub">' + sub + '</div></div><div class="slot-acts">' + a + '</div></div>';
@@ -256,13 +265,14 @@
     else h += '<div class="dias">' + S.dias.map(function (d, i) { var dt = new Date(d.data + 'T12:00:00'); return '<button type="button" class="dchip' + (f.dia === i ? ' on' : '') + '" data-fdia="' + i + '"' + (d.livres.length ? '' : ' disabled') + '><small>' + DS[dt.getDay()] + '</small><b>' + dt.getDate() + '</b><small>' + MS[dt.getMonth()] + '</small></button>'; }).join('') + '</div>';
     h += '</div>';
     if (S.dias && f.dia >= 0 && S.dias[f.dia]) { var d = S.dias[f.dia]; h += '<div class="fg"><label>Hora · ' + esc(dl(d.data)) + '</label><div class="hgrid">' + d.horas.map(function (hr) { return '<button type="button" class="hchip' + (f.hora === hr ? ' on' : '') + '" data-fhora="' + hr + '"' + (d.livres.indexOf(hr) < 0 ? ' disabled' : '') + '>' + hr + '</button>'; }).join('') + '</div></div>'; }
+    h += '<div class="fg"><label>Pagamento</label><div class="seg">' + [['mbway', 'MB WAY (pedido para o telemóvel)'], ['dinheiro', 'Dinheiro'], ['cartao', 'Cartão (TPA)'], ['transferencia', 'Transferência']].map(function (o) { return '<button data-metodo="' + o[0] + '" class="' + (S.metodo === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>' + (S.metodo !== 'mbway' ? '<p class="muted" style="margin-top:6px">Confirme que recebeu o valor antes de marcar. A marcação fica paga logo, com fatura e evento no calendário.</p>' : '') + '</div>';
     h += '<div class="fgrid"><div class="fg full"><label>Nome completo do cliente</label><input id="f-nome" autocomplete="off" value="' + v('f-nome') + '"></div>';
-    h += '<div class="fg"><label>Telemóvel com MB WAY</label><input id="f-tel" type="tel" inputmode="tel" placeholder="9xx xxx xxx" value="' + v('f-tel') + '"></div>';
+    h += '<div class="fg"><label>' + (S.metodo === 'mbway' ? 'Telemóvel com MB WAY' : 'Telemóvel') + '</label><input id="f-tel" type="tel" inputmode="tel" placeholder="9xx xxx xxx" value="' + v('f-tel') + '"></div>';
     h += '<div class="fg"><label>Email (opcional · confirmação)</label><input id="f-email" type="email" autocomplete="off" value="' + v('f-email') + '"></div>';
     h += '<div class="fg"><label>NIF (opcional · em branco = consumidor final)</label><input id="f-nif" inputmode="numeric" maxlength="9" value="' + v('f-nif') + '"></div></div>';
     if (S.msg) h += '<div class="alert ar">' + esc(S.msg) + '</div>';
     var can = !!f.hora && !S.envio;
-    h += '<div><button class="btn btn-gold" id="enviar" style="padding:12px 20px;font-size:15px"' + (can ? '' : ' disabled') + '>' + (S.envio ? 'A enviar…' : f.hora ? 'Enviar pedido MB WAY · ' + precoF() + ' €' : 'Escolha o dia e a hora') + '</button></div>';
+    h += '<div><button class="btn btn-gold" id="enviar" style="padding:12px 20px;font-size:15px"' + (can ? '' : ' disabled') + '>' + (S.envio ? 'A enviar…' : !f.hora ? 'Escolha o dia e a hora' : S.metodo === 'mbway' ? 'Enviar pedido MB WAY · ' + precoF() + ' €' : 'Marcar · recebido ' + precoF() + ' € (' + ({ dinheiro: 'dinheiro', cartao: 'cartão', transferencia: 'transferência' })[S.metodo] + ')') + '</button></div>';
     return h + '</div>';
   }
   function ecraEspera() {
@@ -277,6 +287,27 @@
       h += '<span class="chip co">À espera do cliente</span><h2 style="margin-top:10px">Pedido MB WAY enviado</h2><p class="muted" style="margin-top:6px">' + esc(u.nome) + ' · ' + esc(u.tel) + '<br>' + esc(dl(u.data)) + ' às ' + esc(u.hora) + ' · ' + u.valor + ' €</p><div class="big" id="contador">' + Math.floor(rest / 60) + ':' + ('0' + rest % 60).slice(-2) + '</div><p class="muted">O cliente tem uns 4 minutos para aprovar na app MB WAY. Esta página atualiza sozinha.</p>';
       h += '<a class="btn btn-sage" style="margin-top:14px" target="_blank" rel="noopener" href="https://wa.me/351' + encodeURIComponent(u.tel) + '?text=' + encodeURIComponent(txt) + '">Avisar o cliente no WhatsApp</a>';
     }
+    return h + '</div>';
+  }
+  function tabDevol() {
+    var h = '<div class="ph"><div><h1>Devoluções <em>por fazer</em></h1><p>Cancelamentos com mais de 24 horas de antecedência. Faça a transferência no banco e carregue em «Feita» (o IBAN é apagado).</p></div></div>';
+    if (!S.devol) { carregarDevol(); return h + '<p class="muted">A carregar…</p>'; }
+    if (!S.devol.length) return h + '<div class="card"><p class="muted">Não há devoluções pendentes.</p></div>';
+    h += '<div class="card"><div class="tw"><table><thead><tr><th>Cliente</th><th>Marcação</th><th>Valor</th><th>Como devolver</th><th></th></tr></thead><tbody>';
+    S.devol.forEach(function (d) { var balcao = d.metodo_pag === 'dinheiro' || d.metodo_pag === 'cartao'; h += '<tr><td>' + esc(d.nome) + '<br><span class="muted">' + esc(d.telemovel) + '</span></td><td>' + esc(dl(d.data)) + ' ' + hhmm(d.hora) + '</td><td><b>' + Number(d.devolucao_valor) + ' €</b></td><td>' + (balcao ? 'Ao balcão' : 'Transferência para<br><span style="font-family:monospace;font-size:12.5px;color:var(--ink)">' + esc((d.devolucao_iban || '').replace(/(.{4})/g, '$1 ').trim()) + '</span>') + '</td><td style="text-align:right"><button class="btn btn-sage btn-xs" data-devfeita="' + d.id + '">Feita</button></td></tr>'; });
+    return h + '</tbody></table></div></div>';
+  }
+  function tabHorario() {
+    var h = '<div class="ph"><div><h1>Horário e <em>feriados</em></h1><p>Horas em que se fazem psicotécnicos. O site e a marcação da equipa usam este horário.</p></div></div>';
+    if (!S.hor || !S.fer) { carregarHorario(); return h + '<p class="muted">A carregar…</p>'; }
+    var horas = {}; S.hor.forEach(function (x) { horas[hhmm(x.hora)] = 1; });
+    var lista = Object.keys(horas).sort();
+    var DSEM = [[1, 'Seg'], [2, 'Ter'], [3, 'Qua'], [4, 'Qui'], [5, 'Sex'], [6, 'Sáb'], [7, 'Dom']];
+    h += '<div class="card" style="margin-bottom:16px"><div class="card-hd">Horas por dia da semana <small>toque para ligar ou desligar</small></div><div class="tw"><table><thead><tr><th>Hora</th>' + DSEM.map(function (d) { return '<th style="text-align:center">' + d[1] + '</th>'; }).join('') + '</tr></thead><tbody>';
+    lista.forEach(function (hr) { h += '<tr><td><b>' + hr + '</b></td>' + DSEM.map(function (d) { var x = S.hor.find(function (y) { return y.dia_semana === d[0] && hhmm(y.hora) === hr; }); var on = x && x.ativo; return '<td style="text-align:center"><button class="btn btn-xs ' + (on ? 'btn-sage' : 'btn-out') + '" data-hor="' + d[0] + '|' + hr + '">' + (on ? '✓' : '—') + '</button></td>'; }).join('') + '</tr>'; });
+    h += '</tbody></table></div><div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px"><div class="fg"><label>Nova hora</label><input id="h-nova" type="time" step="300"></div><button class="btn btn-out btn-sm" id="h-add">Acrescentar hora</button></div></div>';
+    h += '<div class="card"><div class="card-hd">Feriados e dias fechados <small>' + S.fer.length + ' próximos</small></div><div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:12px"><div class="fg"><label>Dia</label><input id="f-dia" type="date" min="' + S.hoje + '"></div><div class="fg" style="flex:1"><label>Nome</label><input id="f-nome2" placeholder="ex.: Natal"></div><button class="btn btn-gold btn-sm" id="fer-add">Acrescentar</button></div>';
+    h += S.fer.length ? '<div class="tw"><table><tbody>' + S.fer.map(function (f) { return '<tr><td>' + esc(dl(f.data)) + '</td><td>' + esc(f.nome || '') + '</td><td style="text-align:right"><button class="btn btn-out btn-xs" data-ferdel="' + f.data + '">Retirar</button></td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted">Sem feriados registados.</p>';
     return h + '</div>';
   }
   function tabBloq() {
@@ -313,16 +344,69 @@
 
   function verMarcacao(id) {
     var m = S.marc.find(function (x) { return x.id === id; }); if (!m) return;
-    var linhas = [['Quando', dl(m.data) + ' às ' + hhmm(m.hora)], ['Estado', chipEstado(m)], ['Telemóvel', '<a href="tel:+351' + esc(m.telemovel) + '">' + esc(m.telemovel) + '</a> · <a target="_blank" rel="noopener" href="https://wa.me/351' + esc(m.telemovel) + '">WhatsApp</a>'], ['Email', esc(m.email || '—')], ['NIF', esc(m.nif || '— (consumidor final)')], ['Avaliação', (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + ' · ' + LNG[m.lingua] + (m.formando ? ' · formando' : '')], ['Valor', Number(m.valor) + ' € (MB WAY)'], ['Referência', esc(m.order_id || '')], ['Fatura', esc(m.fatura_estado === 'rascunho' ? 'Rascunho na série WEB do TOConline' : m.fatura_estado === 'emitida' ? 'Emitida' : m.fatura_estado === 'erro' ? 'Erro ao criar — ver TOConline' : '—')], ['Notas', esc(m.obs || '—')]];
+    var linhas = [['Quando', dl(m.data) + ' às ' + hhmm(m.hora)], ['Estado', chipEstado(m)], ['Telemóvel', '<a href="tel:+351' + esc(m.telemovel) + '">' + esc(m.telemovel) + '</a> · <a target="_blank" rel="noopener" href="https://wa.me/351' + esc(m.telemovel) + '">WhatsApp</a>'], ['Email', esc(m.email || '—')], ['NIF', esc(m.nif || '— (consumidor final)')], ['Avaliação', (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + ' · ' + LNG[m.lingua] + (m.formando ? ' · formando' : '')], ['Valor', Number(m.valor) + ' € (MB WAY)'], ['Referência', esc(m.order_id || '')], ['Fatura', esc(m.fatura_estado === 'rascunho' ? 'Rascunho na série WEB do TOConline' : m.fatura_estado === 'emitida' ? 'Emitida' : m.fatura_estado === 'erro' ? 'Erro ao criar — ver TOConline' : '—')], ['Pagamento', esc(({ mbway: 'MB WAY', dinheiro: 'Dinheiro ao balcão', cartao: 'Cartão ao balcão', transferencia: 'Transferência' })[m.metodo_pag] || '—')], ['Remarcações', m.remarcacoes ? m.remarcacoes + (m.justificacao ? ' · ' + esc(m.justificacao) : '') : '—'], ['Notas', esc(m.obs || '—')]];
     modal('<div class="md-hd"><div><h2>' + esc(m.nome) + '</h2></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">' + linhas.map(function (l) { return '<div class="info-row"><div class="info-lbl">' + l[0] + '</div><div class="info-val">' + l[1] + '</div></div>'; }).join('') + '</div>');
   }
+  function horasAte(m) { var t = Date.parse(m.data + 'T' + hhmm(m.hora) + ':00'); return (t - Date.now()) / 3600000; }
   function pedirCancelar(id) {
     var m = S.marc.find(function (x) { return x.id === id; }); if (!m) return;
-    modal('<div class="md-hd"><div><h2>Cancelar marcação</h2><p>' + esc(m.nome) + ' · ' + esc(dl(m.data)) + ' às ' + hhmm(m.hora) + '</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body"><div class="alert aw">A vaga volta a ficar livre e o evento sai do Google Calendar. O cliente pagou ' + Number(m.valor) + ' €: se for para devolver, trate da devolução e da nota de crédito no TOConline.</div><div class="fg"><label>Motivo (interno)</label><input id="c-motivo" placeholder="ex.: pediu para remarcar"></div></div><div class="md-foot"><button class="btn btn-out" data-fechar>Voltar</button><button class="btn btn-rose" data-confcancel="' + id + '">Cancelar marcação</button></div>');
+    var h = horasAte(m), devolve = h >= 24, balcao = m.metodo_pag === 'dinheiro' || m.metodo_pag === 'cartao';
+    var corpo = '<div class="md-body">';
+    if (devolve) {
+      corpo += '<div class="alert as">Faltam mais de 24 horas: <b>devolve-se o valor todo (' + Number(m.valor) + ' €)</b>.' + (balcao ? ' Pagou ao balcão: devolva ao balcão.' : ' A devolução é por transferência: peça o IBAN ao cliente.') + '</div>';
+      if (!balcao) corpo += '<div class="fg" style="margin-bottom:12px"><label>IBAN do cliente</label><input id="c-iban" placeholder="PT50 0000 0000 0000 0000 0000 0" autocomplete="off" style="text-transform:uppercase"></div>';
+    } else {
+      corpo += '<div class="alert ar">Faltam menos de 24 horas: <b>não há devolução</b>. Se o cliente tiver uma justificação, pode <b>remarcar uma vez</b> em vez de cancelar.</div><div style="margin-bottom:12px"><button class="btn btn-out btn-sm" data-remarcar="' + id + '">Remarcar em vez de cancelar</button></div>';
+    }
+    corpo += '<div class="fg"><label>Motivo (interno)</label><input id="c-motivo" placeholder="ex.: pediu para cancelar por telefone"></div><p class="muted" style="margin-top:10px">A vaga volta a ficar livre, o evento sai do Google Calendar e o rascunho da fatura é anulado.</p></div>';
+    modal('<div class="md-hd"><div><h2>Cancelar marcação</h2><p>' + esc(m.nome) + ' · ' + esc(dl(m.data)) + ' às ' + hhmm(m.hora) + ' · ' + Number(m.valor) + ' €</p></div><button class="md-x" data-fechar>✕</button></div>' + corpo + '<div class="md-foot"><button class="btn btn-out" data-fechar>Voltar</button><button class="btn btn-rose" data-confcancel="' + id + '">' + (devolve ? 'Cancelar e registar devolução' : 'Cancelar sem devolução') + '</button></div>');
+  }
+  function pedirRemarcar(id) {
+    var m = S.marc.find(function (x) { return x.id === id; }); if (!m) return;
+    var fora = m.estado === 'faltou' || horasAte(m) < 24;
+    S.remarc = { id: id, fora: fora, dia: -1, hora: '' };
+    desenharRemarcar();
+  }
+  function desenharRemarcar() {
+    var r = S.remarc, m = S.marc.find(function (x) { return x.id === r.id; }); if (!m) return;
+    var just = (document.getElementById('r-just') || {}).value || r.just || '';
+    var h = '<div class="md-hd"><div><h2>Remarcar</h2><p>' + esc(m.nome) + ' · agora: ' + esc(dl(m.data)) + ' às ' + hhmm(m.hora) + '</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">';
+    if (r.fora && m.remarcacoes) h += '<div class="alert ar">Esta marcação já foi remarcada uma vez fora do prazo. Não pode voltar a ser remarcada sem novo pagamento.</div>';
+    else if (r.fora) h += '<div class="alert aw">' + (m.estado === 'faltou' ? 'O cliente faltou.' : 'Faltam menos de 24 horas.') + ' Só pode remarcar <b>uma vez</b> e com justificação.</div>';
+    else h += '<div class="alert as">Faltam mais de 24 horas: remarcação sem custos.</div>';
+    h += '<div class="fg"><label>Novo dia</label><div class="dias">' + (S.dias || []).map(function (d, i) { var dt = new Date(d.data + 'T12:00:00'); return '<button type="button" class="dchip' + (r.dia === i ? ' on' : '') + '" data-rdia="' + i + '"' + (d.livres.length ? '' : ' disabled') + '><small>' + DS[dt.getDay()] + '</small><b>' + dt.getDate() + '</b><small>' + MS[dt.getMonth()] + '</small></button>'; }).join('') + '</div></div>';
+    if (r.dia >= 0) { var d = S.dias[r.dia]; h += '<div class="fg" style="margin-top:12px"><label>Nova hora</label><div class="hgrid">' + d.horas.map(function (x) { return '<button type="button" class="hchip' + (r.hora === x ? ' on' : '') + '" data-rhora="' + x + '"' + (d.livres.indexOf(x) < 0 ? ' disabled' : '') + '>' + x + '</button>'; }).join('') + '</div></div>'; }
+    if (r.fora) h += '<div class="fg" style="margin-top:12px"><label>Justificação</label><input id="r-just" value="' + esc(just) + '" placeholder="ex.: doença, com atestado"></div><div class="fg" style="margin-top:10px"><label>Comprovativo (opcional · fica numa pasta privada)</label><input id="r-fich" type="file" accept="image/*,application/pdf"></div>';
+    h += '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px"><input type="checkbox" id="r-avisar" checked> Enviar email ao cliente com a nova data' + (m.email ? '' : ' (não tem email)') + '</label></div>';
+    h += '<div class="md-foot"><button class="btn btn-out" data-fechar>Voltar</button><button class="btn btn-gold" data-confremarcar="1"' + (r.hora && !(r.fora && m.remarcacoes) ? '' : ' disabled') + '>Remarcar</button></div>';
+    modal(h);
   }
   function entregarCodigo(id) {
     var c = S.cods.find(function (x) { return x.id === id; }); if (!c) return;
     modal('<div class="md-hd"><div><h2>Entregar código ' + esc(c.codigo) + '</h2><p>Registe a quem foi entregue. O formando usa-o na marcação do site.</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body"><div class="fgrid"><div class="fg full"><label>Nome do formando</label><input id="e-nome"></div><div class="fg"><label>Turma</label><input id="e-turma" placeholder="ex.: TVDE dez/2026"></div></div></div><div class="md-foot"><button class="btn btn-out" data-fechar>Voltar</button><button class="btn btn-gold" data-confentregar="' + id + '">Guardar</button></div>');
+  }
+
+  function confirmarRemarcar(btn) {
+    var r = S.remarc, d = S.dias[r.dia], just = (document.getElementById('r-just') || {}).value || '', fi = document.getElementById('r-fich'), avisar = (document.getElementById('r-avisar') || {}).checked !== false;
+    if (r.fora && just.trim().length < 5) { toast('Escreva a justificação.', 'warn'); return; }
+    btn.disabled = true;
+    var sobe = Promise.resolve(null);
+    if (r.fora && fi && fi.files && fi.files[0]) {
+      var f = fi.files[0], cam = r.id + '/' + Date.now() + '-' + f.name.replace(/[^\w.\-]+/g, '_');
+      sobe = sb.storage.from('justificacoes').upload(cam, f).then(function (x) { if (x.error) throw x.error; return cam; });
+    }
+    sobe.then(function (cam) {
+      return fn('remarcar', { id: r.id, data: d.data, hora: r.hora, justificacao: just, ficheiro: cam, avisar: avisar });
+    }).then(function (j) {
+      if (!j.ok) { btn.disabled = false; toast(j.erro || 'Não foi possível remarcar.', 'warn'); return; }
+      fecharModal(); S.remarc = null; toast('Remarcada para ' + dl(d.data) + ' às ' + r.hora + (j.google === false ? ' · confira o Google Calendar' : '') + '.'); carregarAgenda();
+    }).catch(function (e) { btn.disabled = false; toast('Erro ao enviar o comprovativo: ' + (e.message || e), 'warn'); });
+  }
+  function mudarHora(chave) {
+    var p = chave.split('|'), dsem = +p[0], hr = p[1];
+    var x = S.hor.find(function (y) { return y.dia_semana === dsem && hhmm(y.hora) === hr; });
+    var q = x ? sb.from('psi_horarios').update({ ativo: !x.ativo }).eq('id', x.id) : sb.from('psi_horarios').insert({ dia_semana: dsem, hora: hr, ativo: true });
+    q.then(function (r) { if (r.error) toast('Não foi possível: ' + r.error.message, 'warn'); else { S.hor = null; render(); carregarAgenda(); } });
   }
 
   // ───────────── ações
@@ -333,7 +417,8 @@
       S.envio = false;
       if (j._s === 401) { sair(); return; }
       if (!j.id) { S.msg = j.erro || 'Não foi possível enviar.'; if (j._s === 409) { S.f.hora = ''; carregarAgenda(); } render(); return; }
-      S.espera = { id: j.id, nome: dados.nome, tel: dados.telemovel, data: dados.data, hora: dados.hora, valor: j.valor, email: dados.email, dados: dados, fim: Date.now() + 240000, estado: 'pendente' };
+      S.espera = { id: j.id, nome: dados.nome, tel: dados.telemovel, data: dados.data, hora: dados.hora, valor: j.valor, email: dados.email, dados: dados, fim: Date.now() + 240000, estado: j.estado || 'pendente' };
+      if (j.estado === 'pago') { S.campos = {}; S.f.hora = ''; carregarAgenda(); render(); return; }
       render(); poll();
     }).catch(function () { S.envio = false; S.msg = 'Sem ligação. Tente de novo.'; render(); });
   }
@@ -350,9 +435,19 @@
 
   root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
+    var t = e.target.closest('[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
     if (!t) return;
     var d = t.dataset;
+    if (d.metodo) { guardarCampos(); S.metodo = d.metodo; render(); return; }
+    if (d.remarcar) { fecharModal(); if (!S.dias) carregarAgenda(); pedirRemarcar(d.remarcar); return; }
+    if (d.rdia) { S.remarc.just = (document.getElementById('r-just') || {}).value; S.remarc.dia = +d.rdia; S.remarc.hora = ''; desenharRemarcar(); return; }
+    if (d.rhora) { S.remarc.just = (document.getElementById('r-just') || {}).value; S.remarc.hora = d.rhora; desenharRemarcar(); return; }
+    if (d.confremarcar) { confirmarRemarcar(t); return; }
+    if (d.devfeita) { t.disabled = true; fn('devolucao_feita', { id: d.devfeita }).then(function (j) { if (!j.ok) toast(j.erro || 'Erro.', 'warn'); else { toast('Devolução registada.'); carregarDevol(); } }); return; }
+    if (d.hor) { mudarHora(d.hor); return; }
+    if (d.ferdel) { sb.from('feriados').delete().eq('data', d.ferdel).then(function (r) { if (r.error) toast('Não foi possível retirar.', 'warn'); else { toast('Retirado.'); S.fer = null; render(); carregarAgenda(); } }); return; }
+    if (t.id === 'fer-add') { var fd = document.getElementById('f-dia').value, fnm = document.getElementById('f-nome2').value.trim(); if (!fd) { toast('Escolha o dia.', 'warn'); return; } sb.from('feriados').upsert({ data: fd, nome: fnm || null }).then(function (r) { if (r.error) toast('Não foi possível guardar: ' + r.error.message, 'warn'); else { toast('Guardado.'); S.fer = null; render(); carregarAgenda(); } }); return; }
+    if (t.id === 'h-add') { var hn = document.getElementById('h-nova').value; if (!hn) { toast('Escolha a hora.', 'warn'); return; } var linhas = [1, 2, 3, 4, 5].map(function (dsem) { return { dia_semana: dsem, hora: hn, ativo: false }; }); sb.from('psi_horarios').upsert(linhas, { onConflict: 'dia_semana,hora', ignoreDuplicates: true }).then(function (r) { if (r.error) toast('Não foi possível: ' + r.error.message, 'warn'); else { toast('Hora acrescentada (desligada). Ligue os dias.', 'info'); S.hor = null; render(); } }); return; }
     if (d.pag) { S.pag = d.pag; document.getElementById('sb') && document.getElementById('sb').classList.remove('open'); render(); }
     else if (d.tab) { if (d.tab !== 'marcar' && S.tab === 'marcar') guardarCampos(); S.tab = d.tab; render(); }
     else if (d.filtro) { S.filtro = d.filtro; render(); }
@@ -363,13 +458,22 @@
     else if (d.fhora) { guardarCampos(); S.f.hora = d.fhora; S.msg = ''; render(); }
     else if (d.ver) verMarcacao(d.ver);
     else if (d.cancelar) pedirCancelar(d.cancelar);
-    else if (d.mudar || d.confcancel) {
-      var id = d.id || d.confcancel, novo = d.mudar || 'cancelado', motivo = (document.getElementById('c-motivo') || {}).value || '';
+    else if (d.confcancel) {
+      t.disabled = true;
+      fn('cancelar', { id: d.confcancel, iban: (document.getElementById('c-iban') || {}).value || '', motivo: (document.getElementById('c-motivo') || {}).value || '' }).then(function (j) {
+        if (!j.ok) { t.disabled = false; toast(j.erro || 'Não foi possível cancelar.', 'warn'); return; }
+        fecharModal(); S.devol = null;
+        toast('Cancelada' + (j.devolucao ? (j.balcao ? ' · devolver ao balcão' : ' · devolução por transferência pendente') : ' · sem devolução') + (j.google === false ? ' · retire o evento do Google à mão' : ''), j.google === false ? 'warn' : 'ok');
+        carregarAgenda(); fn('devolucoes').then(function (x) { S.devol = x.lista || []; render(); });
+      });
+    }
+    else if (d.mudar) {
+      var id = d.id, novo = d.mudar, motivo = '';
       t.disabled = true;
       fn('mudar', { id: id, estado: novo, motivo: motivo }).then(function (j) {
         fecharModal();
         if (!j.ok) { toast(j.erro || 'Não foi possível alterar.', 'warn'); return; }
-        toast(novo === 'cancelado' ? (j.google ? 'Cancelada e retirada do Google Calendar.' : 'Cancelada. Retire o evento do Google Calendar à mão.') : novo === 'pago' ? 'Alteração desfeita.' : 'Marcado como ' + novo + '.', j.google === false ? 'warn' : 'ok');
+        toast(novo === 'pago' ? 'Alteração desfeita.' : 'Marcado como ' + novo + '.');
         carregarAgenda();
       });
     }
@@ -389,8 +493,8 @@
       guardarCampos();
       var c = S.campos, nome2 = (c['f-nome'] || '').trim(), tel = (c['f-tel'] || '').replace(/\D/g, '').replace(/^351(?=9\d{8}$)/, '');
       if (nome2.length < 3) { S.msg = 'Escreva o nome completo do cliente.'; render(); return; }
-      if (!/^9\d{8}$/.test(tel)) { S.msg = 'O telemóvel tem de ter 9 dígitos e começar por 9.'; render(); return; }
-      enviar({ data: S.dias[S.f.dia].data, hora: S.f.hora, tipo: S.f.tipo, lingua: S.f.lingua, formando: S.f.formando, codigo: (c['f-codigo'] || '').trim(), nome: nome2, telemovel: tel, email: (c['f-email'] || '').trim(), nif: (c['f-nif'] || '').replace(/\D/g, '') });
+      if (S.metodo === 'mbway' ? !/^9\d{8}$/.test(tel) : !/^\d{9}$/.test(tel)) { S.msg = S.metodo === 'mbway' ? 'O telemóvel tem de ter 9 dígitos e começar por 9.' : 'O telefone tem de ter 9 dígitos.'; render(); return; }
+      enviar({ metodo: S.metodo === 'mbway' ? '' : S.metodo, data: S.dias[S.f.dia].data, hora: S.f.hora, tipo: S.f.tipo, lingua: S.f.lingua, formando: S.f.formando, codigo: (c['f-codigo'] || '').trim(), nome: nome2, telemovel: tel, email: (c['f-email'] || '').trim(), nif: (c['f-nif'] || '').replace(/\D/g, '') });
     }
     else if (t.id === 'nova') { S.espera = null; render(); }
     else if (t.id === 'reenviar') { var dd = S.espera.dados; S.espera = null; enviar(dd); }
