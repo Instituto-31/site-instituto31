@@ -436,10 +436,11 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
 
   // ───────────── psicotécnicos
   function pagPsi() {
-    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['devol', 'Devoluções' + (S.devol && S.devol.length ? ' (' + S.devol.length + ')' : '')], ['bloq', 'Bloquear horas'], ['horario', 'Horário e feriados'], ['cods', 'Códigos de formando']];
+    var tabs = [['agenda', 'Agenda'], ['marcar', 'Marcar'], ['consultas', 'Consultas'], ['devol', 'Devoluções' + (S.devol && S.devol.length ? ' (' + S.devol.length + ')' : '')], ['bloq', 'Bloquear horas'], ['horario', 'Horário e feriados'], ['cods', 'Códigos de formando']];
     var h = '<div class="perfil-tabs">' + tabs.map(function (t) { return '<div class="ptab' + (S.tab === t[0] ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</div>'; }).join('') + '</div>';
     if (S.tab === 'agenda') h += tabAgenda();
     else if (S.tab === 'marcar') h += tabMarcar();
+    else if (S.tab === 'consultas') h += tabConsultas();
     else if (S.tab === 'bloq') h += tabBloq();
     else if (S.tab === 'devol') h += tabDevol();
     else if (S.tab === 'horario') h += tabHorario();
@@ -590,6 +591,33 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
       });
     }).catch(function () { toast('Não foi possível abrir a ficha.', 'warn'); });
   }
+
+  function tabConsultas() {
+    var h = '<div class="ph"><div><h1>Consultas <em>realizadas</em></h1><p>Todas as consultas registadas, de qualquer data. Abra uma para emitir de novo o relatório, o certificado ou a 2.ª via.</p></div><div class="ph-acts"><button class="btn btn-gold btn-sm" data-cantiga="1">+ Consulta antiga</button></div></div>';
+    h += '<div class="card" style="margin-bottom:14px"><div style="display:flex;gap:8px"><input id="cq" class="fg" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);padding:8px 11px" placeholder="Procurar por nome ou NIF" value="' + esc(S.cq || '') + '"><button class="btn btn-out btn-sm" data-cbusca="1">Procurar</button>' + (S.cq ? '<button class="btn btn-out btn-sm" data-climpa="1">Limpar</button>' : '') + '</div></div>';
+    if (!S.consultas) { carregarConsultas(); return h + '<p class="muted">A carregar…</p>'; }
+    if (!S.consultas.length) return h + '<div class="card"><p class="muted">' + (S.cq ? 'Nenhuma consulta encontrada para esta pesquisa. Se a consulta é antiga e nunca foi registada, use «+ Consulta antiga».' : 'Ainda não há consultas registadas.') + '</p></div>';
+    return h + '<div class="card" style="padding:0">' + S.consultas.map(function (c) {
+      var p = c.pessoas || {};
+      return '<div class="slot" style="cursor:pointer" data-cabrir="' + c.id + '"><div class="slot-bar" style="background:' + (c.resultado === 'inapto' ? 'var(--rose)' : 'var(--sage)') + ';align-self:stretch"></div><div><div class="slot-h" style="font-size:13px">' + esc(c.data.split('-').reverse().join('/')) + '</div></div><div class="slot-body"><div class="slot-title">' + esc(p.nome || '—') + '</div><div class="slot-sub">' + (p.nif ? 'NIF ' + esc(p.nif) + ' · ' : '') + (c.resultado === 'inapto' ? 'Inapto' : 'Apto') + [c.cats_g1, c.cats_g2].filter(Boolean).map(function (x) { return ' · ' + esc(x); }).join('') + '</div></div><div class="slot-acts"><button class="btn btn-out btn-xs" data-cabrir="' + c.id + '">Abrir</button></div></div>';
+    }).join('') + '</div>' + (S.consultas.length >= 60 ? '<p class="muted" style="margin-top:8px">A mostrar as 60 mais recentes. Use a pesquisa para encontrar outras.</p>' : '');
+  }
+  function carregarConsultas() {
+    var q = (S.cq || '').trim(), sel = 'id,data,resultado,cats_g1,cats_g2,pessoa_id,pessoas(nome,nif)';
+    var base = function () { return sb.from('consultas_psi').select(sel).order('data', { ascending: false }).limit(60); };
+    var pr = !q ? base() : sb.from('pessoas').select('id').limit(200)[/^\d{6,}$/.test(q) ? 'eq' : 'ilike'](/^\d{6,}$/.test(q) ? 'nif' : 'nome', /^\d{6,}$/.test(q) ? q : '%' + q.replace(/[%_]/g, '') + '%').then(function (r) { var ids = (r.data || []).map(function (x) { return x.id; }); return ids.length ? base().in('pessoa_id', ids) : { data: [] }; });
+    Promise.resolve(pr).then(function (r) { S.consultas = r.data || []; render(); });
+  }
+  function abrirConsulta(cid) {
+    sb.from('consultas_psi').select('*, pessoas(*)').eq('id', cid).single().then(function (r) {
+      if (r.error || !r.data) { toast('Não foi possível abrir.', 'warn'); return; }
+      var C = r.data, P = C.pessoas || {}; delete C.pessoas;
+      S.ficha = { id: null, m: null, data: C.data, tipo: C.tipo || 'renovacao', P: P, C: C, ligada: true, busca: null };
+      sb.from('marcacoes_psi').select('id').eq('consulta_id', cid).limit(1).then(function (x) { if (x.data && x.data[0]) S.ficha.id = x.data[0].id; });
+      desenharFicha();
+    });
+  }
+  function consultaAntiga() { S.ficha = { id: null, m: null, data: '', tipo: 'renovacao', P: { nac: 'Portuguesa', carta_emitida: 'IMT' }, C: { resultado: 'apto' }, busca: null }; desenharFicha(); }
   function procurarPessoa(m) {
     var q = sb.from('pessoas').select('*').limit(1);
     if (m.nif) return q.eq('nif', m.nif).then(function (x) { return (x.data || [])[0] || porTel(); });
@@ -605,11 +633,13 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
     CP_P.forEach(function (c) { var e = document.getElementById('fp-' + c[0]); if (e) f.P[c[0]] = e.value.trim() || null; });
     CP_C.forEach(function (c) { var e = document.getElementById('fc-' + c[0]); if (e) f.C[c[0]] = e.value.trim() || null; });
     var r = document.querySelector('input[name="fc-res"]:checked'); if (r) f.C.resultado = r.value;
+    var fd = document.getElementById('fc-data'); if (fd) f.data = fd.value; var ft = document.getElementById('fc-tipo'); if (ft) f.tipo = ft.value;
   }
   function desenharFicha() {
-    var f = S.ficha, m = f.m, h = '<div class="md-hd"><div><h2>Ficha · ' + esc(m.nome) + '</h2><p class="muted" style="margin:2px 0 0">' + esc(dl(m.data)) + ' às ' + hhmm(m.hora) + ' · ' + (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + '</p></div><button class="md-x" data-fechar>✕</button></div><div class="md-body">';
+    var f = S.ficha, m = f.m, h = '<div class="md-hd"><div><h2>' + (m ? 'Ficha · ' + esc(m.nome) : f.C.id ? 'Consulta · ' + esc(f.P.nome || '') : 'Consulta antiga') + '</h2>' + (m ? '<p class="muted" style="margin:2px 0 0">' + esc(dl(m.data)) + ' às ' + hhmm(m.hora) + ' · ' + (m.tipo === 'renovacao' ? 'Renovação' : 'Obtenção') + '</p>' : '') + '</div><button class="md-x" data-fechar>✕</button></div><div class="md-body">';
+    if (!m) h += '<div class="fgrid" style="margin-bottom:12px"><div class="fg"><label>Data da consulta</label><input id="fc-data" type="date" max="' + S.hoje + '" value="' + esc(f.data || '') + '"></div><div class="fg"><label>Tipo</label><select id="fc-tipo">' + [['obtencao', 'Obtenção'], ['renovacao', 'Renovação']].map(function (o) { return '<option value="' + o[0] + '"' + (f.tipo === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>';
     if (f.achada) h += '<div class="alert aw">Encontrei uma ficha já existente com estes dados (<b>' + esc(f.P.nome) + '</b>). Confirme que é a mesma pessoa; se não for, <a href="#" data-fnova>comece uma ficha nova</a>.</div>';
-    else if (!f.ligada && !f.P.id) h += '<div class="fg"><label>Já tem ficha? Procure por nome ou NIF</label><div style="display:flex;gap:8px"><input id="f-busca" placeholder="Nome ou NIF" value="' + esc(f.buscaQ || '') + '"><button class="btn btn-out btn-sm" data-fbusca="1">Procurar</button></div>' + (f.busca ? '<div style="margin-top:6px">' + (f.busca.length ? f.busca.map(function (p) { return '<button class="btn btn-out btn-xs" style="margin:2px" data-fescolhe="' + p.id + '">' + esc(p.nome) + (p.nif ? ' · ' + esc(p.nif) : '') + '</button>'; }).join('') : '<span class="muted">Nenhuma ficha encontrada. Preencha abaixo.</span>') + '</div>' : '') + '</div>';
+    else if (!f.P.id) h += '<div class="fg"><label>Já tem ficha? Procure por nome ou NIF</label><div style="display:flex;gap:8px"><input id="f-busca" placeholder="Nome ou NIF" value="' + esc(f.buscaQ || '') + '"><button class="btn btn-out btn-sm" data-fbusca="1">Procurar</button></div>' + (f.busca ? '<div style="margin-top:6px">' + (f.busca.length ? f.busca.map(function (p) { return '<button class="btn btn-out btn-xs" style="margin:2px" data-fescolhe="' + p.id + '">' + esc(p.nome) + (p.nif ? ' · ' + esc(p.nif) : '') + '</button>'; }).join('') : '<span class="muted">Nenhuma ficha encontrada. Preencha abaixo.</span>') + '</div>' : '') + '</div>';
     h += '<h3 style="margin:16px 0 8px;font-size:14px">Dados da pessoa</h3><div class="fgrid">' + CP_P.map(function (c) { return campo('fp-', c, f.P); }).join('') + '</div>';
     h += '<h3 style="margin:18px 0 8px;font-size:14px">Parecer</h3><div style="display:flex;gap:18px;margin-bottom:10px;font-size:13.5px">' + [['apto', 'Apto'], ['inapto', 'Inapto']].map(function (o) { return '<label><input type="radio" name="fc-res" value="' + o[0] + '"' + (f.C.resultado === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>'; }).join('') + '</div>';
     h += '<div class="fgrid">' + CP_C.map(function (c) { return campo('fc-', c, f.C); }).join('') + '</div>';
@@ -621,16 +651,18 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
   function guardarFicha() {
     lerFicha(); var f = S.ficha, P = f.P, C = f.C;
     if (!P.nome || P.nome.length < 3) return Promise.reject(new Error('Falta o nome.'));
+    var dataC = f.m ? f.m.data : f.data; if (!dataC) return Promise.reject(new Error('Falta a data da consulta.'));
     var dp = {}; CP_P.forEach(function (c) { dp[c[0]] = P[c[0]] == null ? null : P[c[0]]; });
-    if (!f.P.data_ultima_psi || f.P.data_ultima_psi < f.m.data) dp.data_ultima_psi = f.m.data;
+    if (!f.P.data_ultima_psi || f.P.data_ultima_psi < dataC) dp.data_ultima_psi = dataC;
     var auto = PsiDocs.dividir(P.carta_cats); dp.carta_cats_g1 = auto[0] || null; dp.carta_cats_g2 = auto[1] || null;
     var gp = P.id ? sb.from('pessoas').update(dp).eq('id', P.id).select('*').single() : sb.from('pessoas').insert(dp).select('*').single();
     return gp.then(function (r) {
       if (r.error) throw r.error; f.P = r.data;
-      var dc = { pessoa_id: f.P.id, data: f.m.data, hora: hhmm(f.m.hora), tipo: f.m.tipo, categorias: P.carta_cats, resultado: C.resultado, cats_g1: C.cats_g1, cats_g2: C.cats_g2, restricoes_texto: C.restricoes_texto, restricoes: C.restricoes_texto ? C.restricoes_texto.split(/[,;\s]+/).filter(Boolean) : null, obs: C.obs, vg1: P.carta_vg1, vg2: P.carta_vg2, valor: f.m.valor, pago: true };
+      var dc = { pessoa_id: f.P.id, data: dataC, hora: f.m ? hhmm(f.m.hora) : (C.hora || null), tipo: f.m ? f.m.tipo : f.tipo, categorias: P.carta_cats, resultado: C.resultado, cats_g1: C.cats_g1, cats_g2: C.cats_g2, restricoes_texto: C.restricoes_texto, restricoes: C.restricoes_texto ? C.restricoes_texto.split(/[,;\s]+/).filter(Boolean) : null, obs: C.obs, vg1: P.carta_vg1, vg2: P.carta_vg2 }; if (f.m) { dc.valor = f.m.valor; dc.pago = true; }
       return C.id ? sb.from('consultas_psi').update(dc).eq('id', C.id).select('*').single() : sb.from('consultas_psi').insert(dc).select('*').single();
     }).then(function (r) {
-      if (r.error) throw r.error; f.C = r.data;
+      if (r.error) throw r.error; f.C = r.data; S.consultas = null;
+      if (!f.id) return { error: null };
       return sb.from('marcacoes_psi').update({ pessoa_id: f.P.id, consulta_id: f.C.id }).eq('id', f.id);
     }).then(function (r) { if (r.error) throw r.error; f.ligada = true; f.achada = false; });
   }
@@ -639,7 +671,7 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
   function descarregarDoc(tipo, btn) {
     btn.disabled = true;
     guardarFicha().then(function () {
-      var f = S.ficha, D = Object.assign({}, f.P, { cats_g1: f.C.cats_g1, cats_g2: f.C.cats_g2, resultado: f.C.resultado, restricoes: f.C.restricoes_texto, obs: f.C.obs, data: f.m.data });
+      var f = S.ficha, D = Object.assign({}, f.P, { cats_g1: f.C.cats_g1, cats_g2: f.C.cats_g2, resultado: f.C.resultado, restricoes: f.C.restricoes_texto, obs: f.C.obs, data: f.C.data });
       return Promise.all([jszip(), fetch('modelos/' + PsiDocs.MODELOS[tipo]).then(function (r) { if (!r.ok) throw new Error('modelo em falta'); return r.arrayBuffer(); })]).then(function (v) {
         return PsiDocs.preencher(tipo, v[1], D, v[0]);
       }).then(function (blob) {
@@ -736,15 +768,19 @@ tbody td{padding:10px 14px;color:var(--ink2);vertical-align:middle;}
 
   root.addEventListener('change', function (e) { if (e.target.id === 'f-formando') { guardarCampos(); S.f.formando = e.target.checked; render(); } });
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
+    var t = e.target.closest('[data-cantiga],[data-cbusca],[data-climpa],[data-cabrir],[data-ficha],[data-fguardar],[data-fdoc],[data-fbusca],[data-fescolhe],[data-fnova],[data-comprov],[data-metodo],[data-remarcar],[data-rdia],[data-rhora],[data-confremarcar],[data-devfeita],[data-hor],[data-ferdel],#h-add,#fer-add,[data-pag],[data-tab],[data-filtro],[data-ir],[data-ftipo],[data-flingua],[data-fdia],[data-fhora],[data-mudar],[data-cancelar],[data-confcancel],[data-ver],[data-desbloq],[data-codf],[data-entregar],[data-confentregar],#enviar,#nova,#reenviar,#editar,#sair,#mudarpass,#burger,#atualizar,#b-add');
     if (!t) return;
     var d = t.dataset;
+    if (d.cantiga) { consultaAntiga(); return; }
+    if (d.cabrir) { abrirConsulta(d.cabrir); return; }
+    if (d.cbusca) { S.cq = (document.getElementById('cq') || {}).value || ''; S.consultas = null; render(); return; }
+    if (d.climpa) { S.cq = ''; S.consultas = null; render(); return; }
     if (d.ficha) { abrirFicha(d.ficha); return; }
     if (d.fguardar) { t.disabled = true; guardarFicha().then(function () { t.disabled = false; toast('Ficha guardada.'); desenharFicha(); }).catch(function (er) { t.disabled = false; toast('Não foi possível guardar: ' + (er.message || er), 'warn'); }); return; }
     if (d.fdoc) { descarregarDoc(d.fdoc, t); return; }
     if (d.fbusca) { lerFicha(); var q = (document.getElementById('f-busca').value || '').trim(); S.ficha.buscaQ = q; if (q.length < 3) { toast('Escreva pelo menos 3 letras.', 'warn'); return; } var qq = sb.from('pessoas').select('*').limit(8); (/^\d{6,}$/.test(q) ? qq.eq('nif', q) : qq.ilike('nome', '%' + q.replace(/[%_]/g, '') + '%')).then(function (r) { S.ficha.busca = r.data || []; desenharFicha(); }); return; }
     if (d.fescolhe) { lerFicha(); var pe = (S.ficha.busca || []).find(function (p) { return p.id === d.fescolhe; }); if (pe) { S.ficha.P = pe; S.ficha.busca = null; desenharFicha(); } return; }
-    if (d.fnova) { e.preventDefault(); var m0 = S.ficha.m; S.ficha.P = { nome: m0.nome, tel: m0.telemovel, email: m0.email, nif: m0.nif, nac: 'Portuguesa', carta_emitida: 'IMT' }; S.ficha.achada = false; desenharFicha(); return; }
+    if (d.fnova) { e.preventDefault(); var m0 = S.ficha.m || {}; S.ficha.P = { nome: m0.nome, tel: m0.telemovel, email: m0.email, nif: m0.nif, nac: 'Portuguesa', carta_emitida: 'IMT' }; S.ficha.achada = false; desenharFicha(); return; }
     if (d.comprov) { sb.storage.from('justificacoes').createSignedUrl(d.comprov, 300).then(function (r) { if (r.error || !r.data) toast('Não foi possível abrir o comprovativo.', 'warn'); else window.open(r.data.signedUrl, '_blank', 'noopener'); }); return; }
     if (d.metodo) { guardarCampos(); S.metodo = d.metodo; render(); return; }
     if (d.remarcar) { fecharModal(); if (!S.dias) carregarAgenda(); pedirRemarcar(d.remarcar); return; }
